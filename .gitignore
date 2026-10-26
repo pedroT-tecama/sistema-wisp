@@ -1,0 +1,11 @@
+# Entorno virtual y caché de Python
+.venv/
+__pycache__/
+
+# Credenciales (se publican solo las plantillas .ejemplo)
+.env
+# (la plantilla publicable es env.ejemplo.txt)
+sql/00_crear_bases_y_usuario.sql
+
+# Archivos anteriores a la reorganización (borrar manualmente)
+_to_delete/
