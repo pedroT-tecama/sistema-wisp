@@ -99,10 +99,12 @@ class AbonadoResumen(BaseModel):
 
 
 class AbonadoFicha(AbonadoResumen):
-    """Ficha completa del abonado: los datos del resumen más su IP, MAC, plan y fechas."""
+    """Ficha completa del abonado: los datos del resumen más su IP, MAC, plan, fechas y día de pago."""
 
     ip_cliente: str
     mac_cliente: Optional[str]
+    fecha_registro: date
+    dia_pago: int
     fecha_corte_efectivo: Optional[date]
     saldo_dias_favor: int
     tarifa: PlanResumen

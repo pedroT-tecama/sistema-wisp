@@ -7,19 +7,23 @@ Qué hace:
 
 Regla del periodo (prepago):
     - El servicio corre desde el día siguiente al registro (instalación).
+    - fecha_registro guarda el día de la instalación como dato histórico.
     - fecha_vencimiento es el día en que vence el pago del periodo en curso.
-      Al registrar, el primer periodo aún no está pagado: vence el día siguiente.
+      Al registrar, el primer periodo aún no está pagado: vence el día siguiente,
+      y ese día del mes pasa a ser su día de pago (dia_pago).
     - El abonado tiene 10 días de gracia para pagar. El pago lo registra el
-      servicio de pagos (HU-02), que extiende el vencimiento en 30 días.
+      servicio de pagos (HU-02), que calcula el siguiente vencimiento.
+    Los cálculos de fechas están en app/services/periodo.py.
 
 Con qué se relaciona:
     - Lo llama: app/routers/abonados.py (endpoints) y tests/test_abonados.py (pruebas).
-    - Usa: app/models.py (tablas cliente, router_node, perfil_tarifa) y
-      app/schemas.py (AbonadoCrear, datos ya validados).
+    - Usa: app/models.py (tablas cliente, router_node, perfil_tarifa),
+      app/schemas.py (AbonadoCrear, datos ya validados) y
+      app/services/periodo.py (primer vencimiento).
     - No se comunica con los ruteadores: por diseño (sección 6.3), solo la Capa
       de Abstracción de Hardware accede a los equipos.
 """
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import or_, select
@@ -28,6 +32,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Cliente, PerfilTarifa, RouterNode
 from app.schemas import AbonadoCrear
+from app.services.periodo import CalculadorPeriodoComercial
 
 
 # ------------------------------------------------------------ errores del negocio
@@ -62,7 +67,8 @@ class GestionAbonadosService:
             1. Verifica que el ruteador y el plan existan (si no, RecursoNoEncontrado).
             2. Verifica que la IP no esté usada en el mismo ruteador (si lo está, IpDuplicada).
                La misma IP sí puede repetirse en ruteadores de otros distritos.
-            3. Calcula el primer vencimiento: fecha de registro + 1 día.
+            3. Calcula el primer vencimiento (fecha de registro + 1 día); el día
+               de ese vencimiento queda como su día de pago.
             4. Guarda el abonado con estado ACTIVO y lo devuelve.
         No envía órdenes al ruteador: la configuración inicial del equipo es manual.
         """
@@ -85,6 +91,7 @@ class GestionAbonadosService:
 
         # 3. Primer vencimiento: el servicio empieza el día siguiente al registro
         fecha_registro = datos.fecha_registro or hoy or date.today()
+        primer_vencimiento = CalculadorPeriodoComercial.primer_vencimiento(fecha_registro)
         cliente = Cliente(
             router_id=datos.router_id,
             tarifa_id=datos.tarifa_id,
@@ -95,7 +102,9 @@ class GestionAbonadosService:
             ip_cliente=ip,
             mac_cliente=datos.mac_cliente,
             estado="ACTIVO",
-            fecha_vencimiento=fecha_registro + timedelta(days=1),
+            fecha_registro=fecha_registro,
+            fecha_vencimiento=primer_vencimiento,
+            dia_pago=primer_vencimiento.day,
             saldo_dias_favor=0,
         )
 

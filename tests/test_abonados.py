@@ -1,7 +1,7 @@
 """Pruebas unitarias del registro y la búsqueda de abonados (sección 6.7).
 
 Qué prueba:
-    - Regla del primer vencimiento: registro + 1 día, estado ACTIVO.
+    - Regla del primer vencimiento: registro + 1 día, día de pago y fecha de registro guardados.
     - PU-01: IP única por ruteador (rechazada en el mismo ruteador, aceptada en otro distrito).
     - PU-02: integridad referencial (rechaza ruteador o plan inexistente).
     - PU-08: búsqueda por apellidos (sin mayúsculas ni tildes, en orden) y por DNI.
@@ -32,10 +32,12 @@ def abonado(router_id, plan_id, ip, apellidos="Pérez Quispe", dni="40123456", *
 
 # ------------------------------------------------------------ regla del periodo
 def test_primer_vencimiento_es_el_dia_siguiente(session, red):
-    """Registrado el 26/10, su servicio y su primer vencimiento son el 27/10."""
+    """Registrado el 26/10: guarda esa fecha, su primer vencimiento es el 27/10 y su día de pago, el 27."""
     servicio = GestionAbonadosService(session)
     cliente = servicio.registrar_cliente_nuevo(abonado(red["router_a"], red["plan"], "192.168.103.101"))
+    assert cliente.fecha_registro == date(2026, 10, 26)
     assert cliente.fecha_vencimiento == date(2026, 10, 27)
+    assert cliente.dia_pago == 27
     assert cliente.estado == "ACTIVO"
     assert cliente.saldo_dias_favor == 0
 

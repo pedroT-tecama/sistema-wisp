@@ -86,7 +86,8 @@ class Cliente(Base):
     """Tabla cliente: abonados del ISP.
 
     Cada fila es un servicio: un abonado con su IP, su ruteador, su plan,
-    su estado (ACTIVO, PENDIENTE_SUSPENSION o SUSPENDIDO) y su fecha de vencimiento.
+    su estado (ACTIVO, PENDIENTE_SUSPENSION o SUSPENDIDO), su fecha de registro,
+    su fecha de vencimiento y su día de pago.
     """
 
     __tablename__ = "cliente"
@@ -103,7 +104,9 @@ class Cliente(Base):
     estado: Mapped[str] = mapped_column(
         Enum("ACTIVO", "PENDIENTE_SUSPENSION", "SUSPENDIDO", native_enum=False), default="ACTIVO"
     )
+    fecha_registro: Mapped[date] = mapped_column(Date)               # día de la instalación (dato histórico)
     fecha_vencimiento: Mapped[date] = mapped_column(Date)            # día en que vence el pago del periodo
+    dia_pago: Mapped[int] = mapped_column(SmallInteger)              # día del mes en que paga (1 a 31)
     fecha_corte_efectivo: Mapped[Optional[date]] = mapped_column(Date)  # día en que se aplicó el último corte
     saldo_dias_favor: Mapped[int] = mapped_column(SmallInteger, default=0)
 

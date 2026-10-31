@@ -19,6 +19,8 @@
 --         comportamiento por defecto en InnoDB ya es RESTRICT.
 --   C-03  registro_alerta.fecha_registro toma la fecha y hora actual por defecto.
 --   C-04  Un enlace troncal no puede tener el mismo ruteador como origen y destino.
+--   cliente.fecha_registro y cliente.dia_pago: fecha de instalación (histórica)
+--         y día de pago del abonado (ver 03_cliente_fecha_registro_dia_pago.sql).
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -124,11 +126,14 @@ CREATE TABLE cliente (
     ip_cliente            VARCHAR(15)       NOT NULL,
     mac_cliente           VARCHAR(17)       NULL,
     estado                ENUM('ACTIVO','PENDIENTE_SUSPENSION','SUSPENDIDO') NOT NULL DEFAULT 'ACTIVO',
+    fecha_registro        DATE              NOT NULL,
     fecha_vencimiento     DATE              NOT NULL,
+    dia_pago              TINYINT UNSIGNED  NOT NULL,
     fecha_corte_efectivo  DATE              NULL,
     saldo_dias_favor      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     CONSTRAINT pk_cliente PRIMARY KEY (id),
     CONSTRAINT uq_cliente_router_ip UNIQUE (router_id, ip_cliente),
+    CONSTRAINT ck_cliente_dia_pago CHECK (dia_pago BETWEEN 1 AND 31),
     INDEX ix_cliente_apellidos (apellidos),
     INDEX ix_cliente_dni (dni),
     CONSTRAINT fk_cliente_router FOREIGN KEY (router_id)
