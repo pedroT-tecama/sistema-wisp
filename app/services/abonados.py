@@ -1,9 +1,10 @@
 """Reglas de negocio de los abonados: clase GestionAbonadosService (Anexo G, capa 4).
 
 Qué hace:
-    Registra abonados nuevos, los busca por DNI o apellidos y entrega su ficha.
-    Aquí se aplican las reglas: que el ruteador y el plan existan, que la IP no
-    se repita en el mismo ruteador y cuándo vence el primer pago.
+    Registra abonados nuevos, los busca por DNI o apellidos, entrega su ficha
+    y registra sus pagos. Aquí se aplican las reglas: que el ruteador y el plan
+    existan, que la IP no se repita en el mismo ruteador, cuándo vence el primer
+    pago y qué pasa con el vencimiento y las órdenes cuando el abonado paga.
 
 Regla del periodo (prepago):
     - El servicio corre desde el día siguiente al registro (instalación).
@@ -16,22 +17,26 @@ Regla del periodo (prepago):
     Los cálculos de fechas están en app/services/periodo.py.
 
 Con qué se relaciona:
-    - Lo llama: app/routers/abonados.py (endpoints) y tests/test_abonados.py (pruebas).
-    - Usa: app/models.py (tablas cliente, router_node, perfil_tarifa),
-      app/schemas.py (AbonadoCrear, datos ya validados) y
-      app/services/periodo.py (primer vencimiento).
-    - No se comunica con los ruteadores: por diseño (sección 6.3), solo la Capa
-      de Abstracción de Hardware accede a los equipos.
+    - Lo llaman: app/routers/abonados.py y app/routers/pagos.py (endpoints),
+      tests/test_abonados.py y tests/test_pagos.py (pruebas).
+    - Usa: app/models.py (tablas cliente, router_node, perfil_tarifa,
+      caja_ingreso y tarea_pendiente_red), app/schemas.py (datos ya validados)
+      y app/services/periodo.py (cálculo de vencimientos).
+    - No se comunica con los ruteadores: por diseño (sección 6.3), solo crea o
+      anula órdenes en la cola (tarea_pendiente_red); la Capa de Abstracción de
+      Hardware es la única que accede a los equipos.
 """
+from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Cliente, PerfilTarifa, RouterNode
-from app.schemas import AbonadoCrear
+from app.models import CajaIngreso, Cliente, PerfilTarifa, RouterNode, TareaPendienteRed
+from app.schemas import AbonadoCrear, PagoCrear
 from app.services.periodo import CalculadorPeriodoComercial
 
 
@@ -46,6 +51,16 @@ class RecursoNoEncontrado(ErrorNegocio):
 
 class IpDuplicada(ErrorNegocio):
     """La IP ya está asignada a otro abonado del mismo ruteador (PU-01). El endpoint responde 409."""
+
+
+@dataclass
+class ResultadoPago:
+    """Lo que devuelve registrar_pago_abonado(): el pago guardado y qué pasó con las órdenes."""
+
+    pago: CajaIngreso
+    cliente: Cliente
+    orden_generada: Optional[TareaPendienteRed] = None
+    orden_anulada: Optional[TareaPendienteRed] = None
 
 
 # ---------------------------------------------------------------- servicio
@@ -152,3 +167,89 @@ class GestionAbonadosService:
         if cliente is None:
             raise RecursoNoEncontrado(f"No existe el abonado con id {cliente_id}.")
         return cliente
+
+    # HU-02 -----------------------------------------------------------------
+    def registrar_pago_abonado(self, cliente_id: int, datos: PagoCrear, hoy: Optional[date] = None) -> ResultadoPago:
+        """Registra el pago de un abonado y actualiza su vencimiento (HU-02; pruebas PU-03 a PU-05).
+
+        Según el estado del abonado al momento de pagar:
+            - ACTIVO: su día de pago se mantiene; el nuevo vencimiento es ese
+              día del mes siguiente. No se genera ninguna orden.
+            - PENDIENTE_SUSPENSION (el corte se ordenó pero aún no se aplicó):
+              se anula la orden de corte, vuelve a ACTIVO y su vencimiento
+              avanza al mes siguiente, sin orden de activación (PU-05).
+            - SUSPENDIDO (el corte ya se aplicó): se recalcula el vencimiento
+              descontando los días usados sin pagar, el día de ese nuevo
+              vencimiento pasa a ser su día de pago y se encola una orden de
+              ACTIVACION con su IP y las velocidades de su plan (PU-04). Sigue
+              SUSPENDIDO hasta que la orden se aplique en el ruteador.
+        El pago, los cambios del abonado y la orden se guardan en una sola
+        transacción: si algo falla, no se guarda nada (PU-03).
+        """
+        cliente = self.session.get(Cliente, cliente_id, options=[joinedload(Cliente.tarifa)])
+        if cliente is None:
+            raise RecursoNoEncontrado(f"No existe el abonado con id {cliente_id}.")
+        fecha_pago = datos.fecha_pago or hoy or date.today()
+
+        try:
+            # 1. Pago en caja
+            pago = CajaIngreso(cliente_id=cliente.id, monto=Decimal(datos.monto),
+                               medio_pago=datos.medio_pago, fecha_registro=fecha_pago)
+            self.session.add(pago)
+
+            # 2. Nuevo vencimiento según el estado del abonado
+            corte_aplicado = cliente.fecha_corte_efectivo if cliente.estado == "SUSPENDIDO" else None
+            nuevo_vencimiento, nuevo_dia = CalculadorPeriodoComercial.nuevo_vencimiento_por_pago(
+                cliente.fecha_vencimiento, cliente.dia_pago, fecha_pago,
+                fecha_corte=corte_aplicado, saldo_dias_favor=cliente.saldo_dias_favor,
+            )
+            cliente.fecha_vencimiento = nuevo_vencimiento
+            cliente.dia_pago = nuevo_dia
+
+            # 3. Órdenes de la cola
+            orden_generada = orden_anulada = None
+            if cliente.estado == "PENDIENTE_SUSPENSION":
+                orden_anulada = self._anular_corte_pendiente(cliente)
+                cliente.estado = "ACTIVO"
+            elif cliente.estado == "SUSPENDIDO":
+                orden_generada = self._registrar_orden_activacion(cliente)
+                cliente.fecha_corte_efectivo = None     # el corte ya se descontó en el recálculo
+                cliente.saldo_dias_favor = 0
+
+            # 4. Todo se confirma junto
+            self.session.commit()
+        except Exception:
+            self.session.rollback()     # PU-03: si algo falla, no queda ni el pago ni la orden
+            raise
+
+        return ResultadoPago(pago=pago, cliente=cliente, orden_generada=orden_generada, orden_anulada=orden_anulada)
+
+    def _registrar_orden_activacion(self, cliente: Cliente) -> TareaPendienteRed:
+        """Encola la orden de reactivar al abonado en su ruteador, con su IP y las velocidades de su plan."""
+        orden = TareaPendienteRed(
+            router_id=cliente.router_id,
+            cliente_id=cliente.id,
+            accion="ACTIVACION",
+            payload_parametros_red={
+                "ip_cliente": cliente.ip_cliente,
+                "rate_upload": cliente.tarifa.rate_upload,
+                "rate_download": cliente.tarifa.rate_download,
+            },
+            estado="PENDIENTE",
+        )
+        self.session.add(orden)
+        self.session.flush()            # obtiene el id de la orden antes de confirmar
+        return orden
+
+    def _anular_corte_pendiente(self, cliente: Cliente) -> Optional[TareaPendienteRed]:
+        """Anula la orden de corte del abonado que aún no se aplicó en el ruteador (PU-05)."""
+        orden = self.session.scalar(
+            select(TareaPendienteRed).where(
+                TareaPendienteRed.cliente_id == cliente.id,
+                TareaPendienteRed.accion == "CORTE",
+                TareaPendienteRed.estado == "PENDIENTE",
+            )
+        )
+        if orden is not None:
+            orden.estado = "ANULADO"
+        return orden

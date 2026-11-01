@@ -11,6 +11,7 @@ Qué hace:
 
 Con qué se relaciona:
     - app/routers/abonados.py   : recibe AbonadoCrear y responde con AbonadoResumen o AbonadoFicha.
+    - app/routers/pagos.py      : recibe PagoCrear y responde con PagoResultado.
     - app/services/abonados.py  : recibe AbonadoCrear ya validado.
     - app/models.py             : los esquemas de salida se llenan leyendo los modelos.
 """
@@ -108,3 +109,49 @@ class AbonadoFicha(AbonadoResumen):
     fecha_corte_efectivo: Optional[date]
     saldo_dias_favor: int
     tarifa: PlanResumen
+
+
+# ---------------------------------------------------------------- pagos
+class PagoCrear(BaseModel):
+    """Datos que el operador ingresa al cobrar a un abonado (HU-02)."""
+
+    monto: Decimal = Field(gt=0, max_digits=10, decimal_places=2, examples=["50.00"])
+    medio_pago: str = Field(min_length=1, max_length=30, examples=["Efectivo"])
+    fecha_pago: Optional[date] = Field(
+        default=None,
+        description="Fecha del pago. Si se omite, se usa la fecha de hoy.",
+    )
+
+    @field_validator("medio_pago")
+    @classmethod
+    def quitar_espacios(cls, valor: str) -> str:
+        """Elimina espacios sobrantes y rechaza un medio de pago vacío."""
+        valor = " ".join(valor.split())
+        if not valor:
+            raise ValueError("no puede estar vacío")
+        return valor
+
+
+class OrdenResumen(BaseModel):
+    """Orden de la cola generada o anulada por el pago."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    accion: str
+    estado: str
+
+
+class PagoResultado(BaseModel):
+    """Respuesta al registrar un pago: el pago, el nuevo vencimiento y qué pasó con las órdenes."""
+
+    pago_id: int
+    cliente_id: int
+    monto: Decimal
+    fecha_pago: date
+    nuevo_vencimiento: date
+    dia_pago: int
+    estado_abonado: str
+    orden_generada: Optional[OrdenResumen] = None   # activación encolada (abonado que estaba cortado)
+    orden_anulada: Optional[OrdenResumen] = None    # corte que aún no se aplicaba y se cancela (PU-05)
+    mensaje: str

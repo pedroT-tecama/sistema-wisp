@@ -10,6 +10,7 @@ Cómo se ejecuta:
 
 Con qué se relaciona:
     - app/routers/abonados.py : rutas de abonados (registro, búsqueda, ficha).
+    - app/routers/pagos.py    : ruta de pagos (registro del pago del abonado).
     - app/database.py         : conexión con MySQL, usada por /salud/db.
     - Archivo .env            : credenciales de los ruteadores (MK_USER, MK_PASS, MK_PORT).
 """
@@ -20,11 +21,12 @@ from librouteros import connect
 from sqlalchemy import text
 
 from app.database import engine
-from app.routers import abonados
+from app.routers import abonados, pagos
 
 load_dotenv()                          # carga las variables del archivo .env
 app = FastAPI(title="Sistema WISP")    # aplicación web; uvicorn la pone en marcha
 app.include_router(abonados.router)    # agrega las rutas /abonados (HU-01, HU-02, HU-03)
+app.include_router(pagos.router)       # agrega la ruta /abonados/{id}/pagos (HU-02)
 
 
 @app.get("/")

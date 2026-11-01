@@ -1,0 +1,23 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\Pedro T\Documents\sistema-wisp\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Pedro T\Documents\sistema-wisp
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collecting ... collected 12 items
+
+tests/test_abonados.py::test_primer_vencimiento_es_el_dia_siguiente PASSED [  8%]
+tests/test_abonados.py::test_pu01_ip_repetida_en_el_mismo_ruteador_es_rechazada PASSED [ 16%]
+tests/test_abonados.py::test_pu01_misma_ip_en_distritos_distintos_es_aceptada PASSED [ 25%]
+tests/test_abonados.py::test_pu02_ruteador_inexistente_es_rechazado PASSED [ 33%]
+tests/test_abonados.py::test_pu02_plan_inexistente_es_rechazado PASSED   [ 41%]
+tests/test_abonados.py::test_pu08_busqueda_por_apellidos_sin_mayusculas_ni_tildes PASSED [ 50%]
+tests/test_abonados.py::test_pu08_busqueda_por_dni_retorna_todos_los_servicios_del_titular PASSED [ 58%]
+tests/test_periodo.py::test_primer_vencimiento_y_gracia PASSED           [ 66%]
+tests/test_periodo.py::test_puntual_conserva_su_dia_de_pago PASSED       [ 75%]
+tests/test_periodo.py::test_dia_31_cae_el_ultimo_dia_y_luego_vuelve PASSED [ 83%]
+tests/test_periodo.py::test_dia_30_en_febrero_y_regreso_en_marzo PASSED  [ 91%]
+tests/test_periodo.py::test_pu04_recalculo_tras_el_corte PASSED          [100%]
+
+============================= 12 passed in 0.26s ==============================

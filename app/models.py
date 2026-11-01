@@ -11,17 +11,19 @@ Importante:
 
 Con qué se relaciona:
     - sql/01_crear_esquema.sql      : definición real de las tablas (debe coincidir).
-    - app/services/abonados.py      : usa Cliente, RouterNode y PerfilTarifa.
+    - app/services/abonados.py      : usa Cliente, RouterNode, PerfilTarifa,
+                                      CajaIngreso y TareaPendienteRed.
     - tests/conftest.py             : crea datos de prueba con RouterMaster, RouterNode y PerfilTarifa.
 
-En este bloque se describen las tablas que necesita el registro de abonados.
-Las de pagos, órdenes y alertas se agregan en sus bloques.
+Hasta este bloque se describen las tablas del registro de abonados, de los
+pagos (caja_ingreso) y de la cola de órdenes (tarea_pendiente_red). Las de
+alertas y enlaces se agregan en sus bloques.
 """
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Date, Enum, ForeignKey, Numeric, SmallInteger, String
+from sqlalchemy import JSON, Date, DateTime, Enum, ForeignKey, Integer, Numeric, SmallInteger, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -112,3 +114,42 @@ class Cliente(Base):
 
     router: Mapped[RouterNode] = relationship()     # permite leer el ruteador desde el abonado
     tarifa: Mapped[PerfilTarifa] = relationship()   # permite leer el plan desde el abonado
+
+
+class CajaIngreso(Base):
+    """Tabla caja_ingreso: pagos registrados (HU-02).
+
+    Una fila por pago, con su monto, su medio de pago y la fecha en que se cobró.
+    Nunca se borra: es el historial de ingresos del abonado.
+    """
+
+    __tablename__ = "caja_ingreso"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id"))   # abonado que pagó
+    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    medio_pago: Mapped[str] = mapped_column(String(30))                 # efectivo, Yape, transferencia, etc.
+    fecha_registro: Mapped[date] = mapped_column(Date)                  # fecha del pago
+
+
+class TareaPendienteRed(Base):
+    """Tabla tarea_pendiente_red: cola de órdenes de corte y activación (Capa 2 del Anexo G).
+
+    Cada orden indica qué hay que aplicar en un ruteador (CORTE o ACTIVACION)
+    y con qué parámetros de red. El servicio comercial solo crea o anula
+    órdenes; el envío a los ruteadores lo hace otro proceso en segundo plano
+    (ControladorColaSincronizacion, en un bloque posterior).
+    """
+
+    __tablename__ = "tarea_pendiente_red"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    router_id: Mapped[int] = mapped_column(ForeignKey("router_node.id"))    # ruteador donde se aplica
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id"))       # abonado afectado
+    accion: Mapped[str] = mapped_column(Enum("CORTE", "ACTIVACION", native_enum=False))
+    payload_parametros_red: Mapped[dict] = mapped_column(JSON)   # los parámetros de red que contiene la orden
+    intentos: Mapped[int] = mapped_column(Integer, default=0)
+    estado: Mapped[str] = mapped_column(
+        Enum("PENDIENTE", "PROCESADO", "ANULADO", native_enum=False), default="PENDIENTE"
+    )
+    fecha_creacion: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
