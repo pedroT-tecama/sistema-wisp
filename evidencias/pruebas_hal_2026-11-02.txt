@@ -39,7 +39,7 @@ tests/test_suspensiones.py::test_suspension_manual_de_abonado_activo PASSED [ 93
 tests/test_suspensiones.py::test_suspension_manual_rechazada_si_no_esta_activo PASSED [ 96%]
 tests/test_suspensiones.py::test_suspension_manual_de_abonado_inexistente PASSED [100%]
 
-============================= 31 passed in 0.38s ==============================
+============================= 31 passed in 0.45s ==============================
 
 === Prueba en ruteador real: Villanova 1 - E7 (192.168.5.43) ===
 Ruteador: Villanova 1 - E7 (192.168.5.43, RouterOS 7.21.4)
@@ -51,5 +51,5 @@ Corte aplicado (1k/1k).
   Cola: CLIENTE 101 | target: 192.168.103.101/32 | max-limit: 1000/1000
 Ruteador: Villanova 1 - E7 (192.168.5.43, RouterOS 7.21.4)
 Driver: RouterOSv7Driver
-Reactivaci¾n aplicada.
+Reactivaci├│n aplicada.
   Cola: CLIENTE 101 | target: 192.168.103.101/32 | max-limit: 4000000/7000000

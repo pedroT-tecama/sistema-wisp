@@ -211,8 +211,10 @@ class GestionAbonadosService:
             self.session.add(pago)
 
             # 2. Nuevo vencimiento según el estado del abonado
+            #
             # Fecha del corte solo si el corte ya se aplicó (SUSPENDIDO); si no, None: no hay corte que descontar.
             corte_aplicado = cliente.fecha_corte_efectivo if cliente.estado == "SUSPENDIDO" else None
+
             # El calculador devuelve dos valores, en este orden: nueva fecha de vencimiento y nuevo día de pago.
             nuevo_vencimiento, nuevo_dia = CalculadorPeriodoComercial.nuevo_vencimiento_por_pago(
                 cliente.fecha_vencimiento, cliente.dia_pago, fecha_pago,
