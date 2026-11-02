@@ -51,9 +51,9 @@ SET @nodo_cabecera := (SELECT id FROM router_node
 -- 3.2 Ruteador de borde conectado a la cabecera por el enlace PTP
 INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_gestion_ospf,
                          puerto_socket, version_routeros, estado_operativo) VALUES
-    (@master, @nodo_cabecera, 'Villanova 1 - E7', 'ROUTER', '192.168.5.43', 8002, '7.21.4', 'CHECK_OK');
+    (@master, @nodo_cabecera, 'Condominio 1 - E7', 'ROUTER', '192.168.5.43', 8002, '7.21.4', 'CHECK_OK');
 
-SET @nodo_villanova := (SELECT id FROM router_node
+SET @nodo_condominio := (SELECT id FROM router_node
                         WHERE master_id = @master AND ip_gestion_ospf = '192.168.5.43');
 
 -- ---------------------------------------------------------------------
@@ -62,7 +62,7 @@ SET @nodo_villanova := (SELECT id FROM router_node
 INSERT INTO enlace_backhaul_ptp (router_origen_id, router_destino_id, nombre_enlace,
                                  ip_antena_origen, ip_antena_destino,
                                  rssi_minimo_esperado, frecuencia_operacion) VALUES
-    (@nodo_cabecera, @nodo_villanova, 'Villanova 1 - E7',
+    (@nodo_cabecera, @nodo_condominio, 'Condominio 1 - E7',
      '192.168.5.41', '192.168.5.42', -68, NULL);
 
 COMMIT;

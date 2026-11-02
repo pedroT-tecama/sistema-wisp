@@ -10,7 +10,7 @@ Uso (desde la carpeta del proyecto, con el entorno virtual activo):
     python -m scripts.prueba_hal ver       192.168.103.101
     python -m scripts.prueba_hal cortar    192.168.103.101
     python -m scripts.prueba_hal reactivar 192.168.103.101 4M 7M
-    Opcional: --router 192.168.5.43 (es el valor por defecto: Villanova 1 - E7)
+    Opcional: --router 192.168.5.43 (es el valor por defecto: Condominio 1 - E7)
 
 Importante:
     Usar solo IP ficticias con su cola de prueba creada a mano en el ruteador.

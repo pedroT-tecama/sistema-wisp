@@ -36,7 +36,7 @@ class AbonadoCrear(BaseModel):
     nombres: str = Field(min_length=1, max_length=40, examples=["Juan Carlos"])
     apellidos: str = Field(min_length=1, max_length=40, examples=["Pérez Quispe"])
     dni: str = Field(min_length=8, max_length=12, pattern=r"^[0-9A-Za-z]+$", examples=["40123456"])
-    direccion: str = Field(min_length=1, max_length=150, examples=["Jr. Los Pinos 123, Villanova"])
+    direccion: str = Field(min_length=1, max_length=150, examples=["Jr. Los Pinos 123, Condominio 1"])
     ip_cliente: IPv4Address = Field(examples=["192.168.103.101"])          # rechaza IP mal escritas
     mac_cliente: Optional[str] = Field(default=None, pattern=MAC_PATRON, examples=["AA:BB:CC:11:22:33"])
     router_id: int = Field(gt=0, examples=[2])                              # id en la tabla router_node
