@@ -12,6 +12,7 @@ Qué hace:
 Con qué se relaciona:
     - app/routers/abonados.py   : recibe AbonadoCrear y responde con AbonadoResumen o AbonadoFicha.
     - app/routers/pagos.py      : recibe PagoCrear y responde con PagoResultado.
+    - app/routers/suspensiones.py : responde con SuspensionResultado.
     - app/services/abonados.py  : recibe AbonadoCrear ya validado.
     - app/models.py             : los esquemas de salida se llenan leyendo los modelos.
 """
@@ -154,4 +155,15 @@ class PagoResultado(BaseModel):
     estado_abonado: str
     orden_generada: Optional[OrdenResumen] = None   # activación encolada (abonado que estaba cortado)
     orden_anulada: Optional[OrdenResumen] = None    # corte que aún no se aplicaba y se cancela (PU-05)
+    mensaje: str
+
+
+# ---------------------------------------------------------------- suspensiones
+class SuspensionResultado(BaseModel):
+    """Respuesta a la suspensión manual: el nuevo estado del abonado y la orden de corte encolada."""
+
+    cliente_id: int
+    estado_abonado: str
+    fecha_vencimiento: date
+    orden_corte: OrdenResumen
     mensaje: str

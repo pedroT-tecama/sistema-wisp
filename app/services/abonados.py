@@ -1,8 +1,8 @@
 """Reglas de negocio de los abonados: clase GestionAbonadosService (Anexo G, capa 4).
 
 Qué hace:
-    Registra abonados nuevos, los busca por DNI o apellidos, entrega su ficha
-    y registra sus pagos. Aquí se aplican las reglas: que el ruteador y el plan
+    Registra abonados nuevos, los busca por DNI o apellidos, entrega su ficha,
+    registra sus pagos y los suspende (por vencimiento o por decisión del negocio). Aquí se aplican las reglas: que el ruteador y el plan
     existan, que la IP no se repita en el mismo ruteador, cuándo vence el primer
     pago y qué pasa con el vencimiento y las órdenes cuando el abonado paga.
 
@@ -17,8 +17,9 @@ Regla del periodo (prepago):
     Los cálculos de fechas están en app/services/periodo.py.
 
 Con qué se relaciona:
-    - Lo llaman: app/routers/abonados.py y app/routers/pagos.py (endpoints),
-      tests/test_abonados.py y tests/test_pagos.py (pruebas).
+    - Lo llaman: app/routers/abonados.py, app/routers/pagos.py y
+      app/routers/suspensiones.py (endpoints), app/tareas.py (suspensión
+      diaria automática) y los archivos de tests/ (pruebas).
     - Usa: app/models.py (tablas cliente, router_node, perfil_tarifa,
       caja_ingreso y tarea_pendiente_red), app/schemas.py (datos ya validados)
       y app/services/periodo.py (cálculo de vencimientos).
@@ -49,6 +50,10 @@ class RecursoNoEncontrado(ErrorNegocio):
     """El ruteador, el plan o el abonado indicado no existe (PU-02). El endpoint responde 404."""
 
 
+class EstadoNoPermitido(ErrorNegocio):
+    """La operación no corresponde al estado actual del abonado (p. ej., suspender a uno ya suspendido). El endpoint responde 409."""
+
+
 class IpDuplicada(ErrorNegocio):
     """La IP ya está asignada a otro abonado del mismo ruteador (PU-01). El endpoint responde 409."""
 
@@ -61,6 +66,14 @@ class ResultadoPago:
     cliente: Cliente
     orden_generada: Optional[TareaPendienteRed] = None
     orden_anulada: Optional[TareaPendienteRed] = None
+
+
+@dataclass
+class ResultadoSuspension:
+    """Abonado suspendido y orden de corte encolada por la suspensión."""
+
+    cliente: Cliente
+    orden: TareaPendienteRed
 
 
 # ---------------------------------------------------------------- servicio
@@ -198,7 +211,9 @@ class GestionAbonadosService:
             self.session.add(pago)
 
             # 2. Nuevo vencimiento según el estado del abonado
+            # Fecha del corte solo si el corte ya se aplicó (SUSPENDIDO); si no, None: no hay corte que descontar.
             corte_aplicado = cliente.fecha_corte_efectivo if cliente.estado == "SUSPENDIDO" else None
+            # El calculador devuelve dos valores, en este orden: nueva fecha de vencimiento y nuevo día de pago.
             nuevo_vencimiento, nuevo_dia = CalculadorPeriodoComercial.nuevo_vencimiento_por_pago(
                 cliente.fecha_vencimiento, cliente.dia_pago, fecha_pago,
                 fecha_corte=corte_aplicado, saldo_dias_favor=cliente.saldo_dias_favor,
@@ -206,7 +221,11 @@ class GestionAbonadosService:
             cliente.fecha_vencimiento = nuevo_vencimiento
             cliente.dia_pago = nuevo_dia
 
-            # 3. Órdenes de la cola
+            # 3. Órdenes de la cola, según el estado del abonado al pagar:
+            #    - ACTIVO: no se genera ni se anula ninguna orden.
+            #    - PENDIENTE_SUSPENSION: el corte aún no se aplicó; se anula y vuelve a ACTIVO de inmediato.
+            #    - SUSPENDIDO: el corte ya se aplicó; se encola la reactivación y sigue SUSPENDIDO
+            #      hasta que la cola la aplique en el ruteador (consistencia eventual).
             orden_generada = orden_anulada = None
             if cliente.estado == "PENDIENTE_SUSPENSION":
                 orden_anulada = self._anular_corte_pendiente(cliente)
@@ -223,6 +242,86 @@ class GestionAbonadosService:
             raise
 
         return ResultadoPago(pago=pago, cliente=cliente, orden_generada=orden_generada, orden_anulada=orden_anulada)
+
+    # HU-03: suspensiones -----------------------------------------------------
+    def procesar_vencimientos(self, hoy: Optional[date] = None) -> list[ResultadoSuspension]:
+        """Suspensión automática por vencimiento: tarea programada diaria (HU-03; prueba PU-06).
+
+        Busca a los abonados ACTIVOS cuya fecha de vencimiento más los días de
+        gracia ya fue superada; a cada uno lo pasa a PENDIENTE_SUSPENSION y
+        encola su orden de CORTE. Los que están dentro de la gracia no se tocan.
+        Todas las suspensiones del día se guardan juntas: si una falla, no se
+        guarda ninguna, y la tarea puede volver a ejecutarse sin duplicar órdenes.
+        La lanza app/tareas.py una vez al día; no es una operación de la interfaz.
+        """
+        hoy = hoy or date.today()
+        activos = self.session.scalars(
+            select(Cliente).options(joinedload(Cliente.tarifa)).where(Cliente.estado == "ACTIVO")
+        ).unique().all()
+        vencidos = [c for c in activos if CalculadorPeriodoComercial.gracia_superada(c.fecha_vencimiento, hoy)]
+
+        resultados = []
+        try:
+            for cliente in vencidos:
+                orden = self._registrar_orden_corte(cliente)
+                cliente.estado = "PENDIENTE_SUSPENSION"
+                resultados.append(ResultadoSuspension(cliente=cliente, orden=orden))
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        return resultados
+
+    def suspender_abonado_manual(self, cliente_id: int) -> ResultadoSuspension:
+        """Suspensión manual por decisión del negocio (HU-03).
+
+        Permite suspender a un abonado ACTIVO antes de que concluya su plazo de
+        gracia: lo pasa a PENDIENTE_SUSPENSION y encola su orden de CORTE.
+        Si el corte se aplica antes de su vencimiento, los días pagados que no
+        usó se registran como saldo a favor cuando la orden se ejecute en el
+        ruteador (lo hará la cola de órdenes en un bloque posterior).
+        Errores: RecursoNoEncontrado si no existe; EstadoNoPermitido si no está ACTIVO.
+        """
+        cliente = self.session.get(Cliente, cliente_id, options=[joinedload(Cliente.tarifa)])
+        if cliente is None:
+            raise RecursoNoEncontrado(f"No existe el abonado con id {cliente_id}.")
+        if cliente.estado != "ACTIVO":
+            raise EstadoNoPermitido(
+                f"El abonado {cliente_id} está en estado {cliente.estado}; solo se suspende a un abonado ACTIVO."
+            )
+        try:
+            orden = self._registrar_orden_corte(cliente)
+            cliente.estado = "PENDIENTE_SUSPENSION"
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        return ResultadoSuspension(cliente=cliente, orden=orden)
+
+    def _registrar_orden_corte(self, cliente: Cliente) -> TareaPendienteRed:
+        """Encola la orden de cortar al abonado: su cola simple quedará limitada a 1k/1k en su ruteador.
+
+        Si ya tiene una orden de corte pendiente, la devuelve en lugar de crear otra.
+        """
+        existente = self.session.scalar(
+            select(TareaPendienteRed).where(
+                TareaPendienteRed.cliente_id == cliente.id,
+                TareaPendienteRed.accion == "CORTE",
+                TareaPendienteRed.estado == "PENDIENTE",
+            )
+        )
+        if existente is not None:
+            return existente
+        orden = TareaPendienteRed(
+            router_id=cliente.router_id,
+            cliente_id=cliente.id,
+            accion="CORTE",
+            payload_parametros_red={"ip_cliente": cliente.ip_cliente, "rate_upload": "1k", "rate_download": "1k"},
+            estado="PENDIENTE",
+        )
+        self.session.add(orden)
+        self.session.flush()            # obtiene el id de la orden antes de confirmar
+        return orden
 
     def _registrar_orden_activacion(self, cliente: Cliente) -> TareaPendienteRed:
         """Encola la orden de reactivar al abonado en su ruteador, con su IP y las velocidades de su plan."""

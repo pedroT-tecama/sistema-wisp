@@ -6,6 +6,7 @@ Qué prueba:
     - Días 29, 30 y 31: último día del mes cuando el día no existe, y regreso
       a su día al mes siguiente (incluido febrero de año bisiesto).
     - PU-04: recálculo del vencimiento cuando el abonado paga después del corte.
+    - PU-06: cuándo se considera superada la gracia; días consumidos y saldo a favor.
 
 Estas pruebas no usan la base de datos: verifican solo los cálculos.
 
@@ -52,3 +53,16 @@ def test_pu04_recalculo_tras_el_corte():
         date(2026, 10, 1), 1, fecha_pago=date(2026, 10, 15), fecha_corte=date(2026, 10, 11)
     )
     assert (nuevo, dia) == (date(2026, 11, 4), 4)
+
+
+def test_gracia_superada_solo_despues_del_ultimo_dia():
+    """Vence el 01/10: el 11/10 aún está en gracia; el 12/10 la gracia está superada (PU-06)."""
+    assert not Periodo.gracia_superada(date(2026, 10, 1), date(2026, 10, 11))
+    assert Periodo.gracia_superada(date(2026, 10, 1), date(2026, 10, 12))
+
+
+def test_dias_consumidos_y_saldo_a_favor():
+    """Corte después del vencimiento: días consumidos. Corte antes del vencimiento (manual): días a favor."""
+    assert Periodo.calcular_dias_consumidos_en_espera(date(2026, 10, 1), date(2026, 10, 11)) == 10
+    assert Periodo.calcular_saldo_dias_favor(date(2026, 10, 20), date(2026, 10, 12)) == 8
+    assert Periodo.calcular_dias_consumidos_en_espera(date(2026, 10, 20), date(2026, 10, 12)) == 0

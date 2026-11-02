@@ -21,8 +21,8 @@ Reglas (obtenidas en el levantamiento de información, Capítulo 4):
 Todas las funciones son cálculos puros: no leen ni guardan en la base de datos.
 
 Con qué se relaciona:
-    - Lo usan: app/services/abonados.py (primer vencimiento) y, en los bloques
-      siguientes, el servicio de pagos y la suspensión por vencimiento.
+    - Lo usa: app/services/abonados.py (primer vencimiento, pagos y suspensión
+      por vencimiento). Los nombres de los métodos siguen el Anexo G.
     - Lo prueba: tests/test_periodo.py.
 """
 import calendar
@@ -80,17 +80,43 @@ class CalculadorPeriodoComercial:
         return cls.vencimiento_del_mes(anio, mes, dia_pago)
 
     @staticmethod
-    def vencimiento_tras_corte(
-        vencimiento: date, fecha_corte: date, fecha_pago: date, saldo_dias_favor: int = 0
+    def calcular_dias_consumidos_en_espera(fecha_venc: date, fecha_corte: date) -> int:
+        """Días en que el abonado usó el servicio sin pagar: del vencimiento al corte (regla 5).
+
+        Incluye los días de gracia y el tiempo en que la orden de corte estuvo pendiente.
+        Si el corte ocurrió antes del vencimiento (suspensión manual), devuelve 0.
+        Ejemplo: vence 01/10, corte 11/10 -> 10 días.
+        """
+        return max((fecha_corte - fecha_venc).days, 0)
+
+    @staticmethod
+    def calcular_saldo_dias_favor(fecha_venc: date, fecha_corte: date) -> int:
+        """Días pagados que el abonado no llegó a usar porque fue cortado antes de su vencimiento.
+
+        Solo ocurre con la suspensión manual; se suman al reactivar el servicio.
+        Ejemplo: vence 20/10, corte 12/10 -> 8 días a favor.
+        """
+        return max((fecha_venc - fecha_corte).days, 0)
+
+    @classmethod
+    def conciliar_fechas_por_reactivacion(
+        cls, vencimiento: date, fecha_corte: date, fecha_pago: date, saldo_dias_favor: int = 0
     ) -> date:
         """Nuevo vencimiento cuando el abonado paga después de haber sido cortado (regla 5).
 
-        nuevo vencimiento = fecha de pago + 30 - días usados sin pagar + días a favor,
-        donde los días usados sin pagar van del vencimiento al corte.
+        nuevo vencimiento = fecha de pago + 30 - días consumidos sin pagar + días a favor.
         Ejemplo (PU-04): vence 01/10, corte 11/10, paga 15/10 -> 15/10 + 30 - 10 = 04/11.
         """
-        dias_usados_sin_pagar = max((fecha_corte - vencimiento).days, 0)
-        return fecha_pago + timedelta(days=DIAS_PERIODO_RECALCULO - dias_usados_sin_pagar + saldo_dias_favor)
+        dias_consumidos = cls.calcular_dias_consumidos_en_espera(vencimiento, fecha_corte)
+        return fecha_pago + timedelta(days=DIAS_PERIODO_RECALCULO - dias_consumidos + saldo_dias_favor)
+
+    @classmethod
+    def gracia_superada(cls, vencimiento: date, hoy: date) -> bool:
+        """Indica si ya pasaron los días de gracia: hoy es posterior al último día para pagar (PU-06).
+
+        Ejemplo: vence 01/10 -> puede pagar hasta el 11/10; el 12/10 la gracia está superada.
+        """
+        return hoy > cls.limite_gracia(vencimiento)
 
     @classmethod
     def nuevo_vencimiento_por_pago(
@@ -108,5 +134,5 @@ class CalculadorPeriodoComercial:
         """
         if fecha_corte is None:
             return cls.siguiente_vencimiento(vencimiento, dia_pago), dia_pago
-        nuevo = cls.vencimiento_tras_corte(vencimiento, fecha_corte, fecha_pago, saldo_dias_favor)
+        nuevo = cls.conciliar_fechas_por_reactivacion(vencimiento, fecha_corte, fecha_pago, saldo_dias_favor)
         return nuevo, nuevo.day
