@@ -23,17 +23,17 @@ Un proveedor de servicio de internet con una red jerárquicamente distribuida en
 | Periodo prepago y registro de pagos | Concluido |
 | Suspensión automática y manual (Hito 1) | Concluido |
 | Capa de Abstracción de Hardware (RouterOS 6 y 7) | Concluido; verificado en un ruteador real |
-| Cola de órdenes (Hito 2) | En construcción |
+| Cola de órdenes (Hito 2) | Concluido; verificado en tres ruteadores reales (RouterOS 7.8, 7.13.3 y 7.21.4) |
 | Monitoreo OSPF, señal y correo (Hito 3) | Pendiente |
 
-Pruebas unitarias: **31 de 31 conformes** (ver `evidencias/`).
+Pruebas unitarias: **38 de 38 conformes** (ver `evidencias/`).
 
 ## Arquitectura
 
 Una sola aplicación organizada en cuatro capas (Anexo G de la tesis):
 
 1. **Entidades de negocio** (`app/models.py`): abonados, planes, pagos, cabeceras, ruteadores y enlaces.
-2. **Consistencia eventual** (`app/models.py`, cola de órdenes): las operaciones comerciales registran órdenes de corte o reactivación en la tabla `tarea_pendiente_red`, en la misma transacción del pago; un proceso en segundo plano las aplica en los ruteadores y las reintenta si un equipo no responde.
+2. **Consistencia eventual** (`app/cola_sincronizacion.py`): las operaciones comerciales registran órdenes de alta, corte o reactivación en la tabla `tarea_pendiente_red`, en la misma transacción del registro, el pago o la suspensión; `ControladorColaSincronizacion` las aplica en segundo plano y las reintenta mientras un equipo no responda.
 3. **Capa de Abstracción de Hardware** (`app/hal/`): única vía de comunicación con los ruteadores. `HardwareAbstractionLayer` elige el driver según la versión de RouterOS (`RouterOSv6Driver` o `RouterOSv7Driver`, que heredan de la clase abstracta `RouterOSDriver`); `MikrotikAPIClient` se comunica de forma asíncrona con la API de RouterOS.
 4. **Servicios de aplicación** (`app/services/`): reglas del negocio (`GestionAbonadosService`, `CalculadorPeriodoComercial`).
 
@@ -47,8 +47,9 @@ app/
   database.py        Conexión con MySQL
   models.py          Tablas como clases de Python (SQLAlchemy)
   schemas.py         Validación de datos de entrada y salida (Pydantic)
-  tareas.py          Suspensión automática diaria en segundo plano
-  routers/           Operaciones de la interfaz: abonados, pagos, suspensiones
+  tareas.py          Tareas en segundo plano: suspensión diaria y cola de órdenes
+  cola_sincronizacion.py  Cola de órdenes: aplica cortes y reactivaciones en los ruteadores
+  routers/           Operaciones de la interfaz: abonados, pagos, suspensiones, órdenes
   services/          Reglas del negocio: abonados, pagos, periodo prepago
   hal/               Capa de Abstracción de Hardware (RouterOS 6 y 7)
 sql/                 Scripts de creación del esquema, carga inicial y ajustes
@@ -82,6 +83,7 @@ Base de datos, en MySQL Workbench y en este orden:
 2. `sql/01_crear_esquema.sql` en ambas bases.
 3. `sql/02_carga_inicial.sql` en `wisp_db` (planes, cabecera, ruteadores y enlace troncal).
 4. `sql/03_cliente_fecha_registro_dia_pago.sql` solo en bases creadas antes de ese ajuste; las instalaciones nuevas ya lo incluyen en el script 01.
+5. `sql/04_ruteadores_y_enlaces_adicionales.sql` en `wisp_db` (dos ruteadores de borde y un radioenlace del caso de estudio).
 
 ## Configuración (`.env`)
 
@@ -94,6 +96,8 @@ Base de datos, en MySQL Workbench y en este orden:
 | `MK_MODO_CONEXION` | `directo` (IP de gestión del ruteador) o `cabecera` (dirección pública de la cabecera y puerto mapeado) |
 | `DIAS_GRACIA` | Días de gracia del periodo prepago (10 por defecto) |
 | `SUSPENSION_AUTOMATICA`, `SUSPENSION_INTERVALO_HORAS` | Activa la suspensión diaria y define su intervalo |
+| `COLA_AUTOMATICA`, `COLA_INTERVALO_SEGUNDOS` | Activa la cola de órdenes y define cada cuántos segundos revisa las pendientes (30 por defecto) |
+| `COLA_CONCURRENCIA` | Órdenes que se aplican a la vez (5 por defecto) |
 
 El archivo `.env` contiene credenciales y **no se publica** (está en `.gitignore`).
 

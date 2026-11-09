@@ -7,6 +7,10 @@ Qué hace:
       encola sus órdenes de corte. La primera revisión se hace al encender el
       sistema y luego se repite cada SUSPENSION_INTERVALO_HORAS (24 por defecto).
     - Se puede desactivar con SUSPENSION_AUTOMATICA=0 en el archivo .env.
+    - Cola de órdenes (HU-03): cada COLA_INTERVALO_SEGUNDOS (30 por defecto)
+      aplica en los ruteadores las órdenes de corte y reactivación pendientes,
+      mediante ControladorColaSincronizacion. Al encender el sistema retoma las
+      que quedaron pendientes. Se desactiva con COLA_AUTOMATICA=0.
 
 Cómo funciona:
     El sistema web atiende solicitudes de forma asíncrona. Para no detenerlo
@@ -15,7 +19,8 @@ Cómo funciona:
 
 Con qué se relaciona:
     - Lo arranca: app/main.py, al encender el sistema.
-    - Llama a: app/services/abonados.py (procesar_vencimientos).
+    - Llama a: app/services/abonados.py (procesar_vencimientos) y
+      app/cola_sincronizacion.py (ControladorColaSincronizacion).
     - Usa: app/database.py (SessionLocal) para abrir su propia sesión.
 """
 import asyncio
@@ -24,6 +29,7 @@ import os
 
 from dotenv import load_dotenv
 
+from app.cola_sincronizacion import ControladorColaSincronizacion
 from app.database import SessionLocal
 from app.services.abonados import GestionAbonadosService
 
@@ -32,6 +38,9 @@ log = logging.getLogger("uvicorn.error")      # los mensajes salen en la misma c
 
 SUSPENSION_AUTOMATICA = os.getenv("SUSPENSION_AUTOMATICA", "1") == "1"
 INTERVALO_HORAS = float(os.getenv("SUSPENSION_INTERVALO_HORAS", "24"))
+COLA_AUTOMATICA = os.getenv("COLA_AUTOMATICA", "1") == "1"
+COLA_INTERVALO_SEGUNDOS = float(os.getenv("COLA_INTERVALO_SEGUNDOS", "30"))
+controlador = ControladorColaSincronizacion()     # un solo controlador para todo el sistema
 
 
 def revisar_vencimientos() -> int:
@@ -52,3 +61,20 @@ async def ciclo_suspension_diaria():
         except Exception as error:                  # un error no detiene la tarea; se reintenta en la siguiente vuelta
             log.error("Error en la revisión de vencimientos: %s", error)
         await asyncio.sleep(INTERVALO_HORAS * 3600)
+
+
+async def ciclo_cola_ordenes():
+    """Al encender, retoma las órdenes pendientes; luego aplica la cola cada COLA_INTERVALO_SEGUNDOS."""
+    try:
+        await controlador.autosanar_lotes_por_corte_energia()
+    except Exception as error:
+        log.error("No se pudo leer el estado de la cola al iniciar: %s", error)
+    while True:
+        try:
+            r = await controlador.despachar_comandos_cola_tareas()
+            if r.procesadas or r.pendientes or r.reactivaciones_por_pago:
+                log.info("Cola de órdenes, vuelta %s: %s aplicada(s), %s pendiente(s), %s reactivación(es) por pago.",
+                         r.lote, len(r.procesadas), len(r.pendientes), len(r.reactivaciones_por_pago))
+        except Exception as error:                  # un error no detiene la cola; se reintenta en la siguiente vuelta
+            log.error("Error en la cola de órdenes: %s", error)
+        await asyncio.sleep(COLA_INTERVALO_SEGUNDOS)

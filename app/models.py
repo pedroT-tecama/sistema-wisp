@@ -138,7 +138,7 @@ class TareaPendienteRed(Base):
     Cada orden indica qué hay que aplicar en un ruteador (CORTE o ACTIVACION)
     y con qué parámetros de red. El servicio comercial solo crea o anula
     órdenes; el envío a los ruteadores lo hace otro proceso en segundo plano
-    (ControladorColaSincronizacion, en un bloque posterior).
+    (ControladorColaSincronizacion, en app/cola_sincronizacion.py).
     """
 
     __tablename__ = "tarea_pendiente_red"

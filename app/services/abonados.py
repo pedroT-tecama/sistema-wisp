@@ -88,7 +88,8 @@ class GestionAbonadosService:
         self.session = session
 
     # HU-01 -----------------------------------------------------------------
-    def registrar_cliente_nuevo(self, datos: AbonadoCrear, hoy: Optional[date] = None) -> Cliente:
+    def registrar_cliente_nuevo(self, datos: AbonadoCrear, hoy: Optional[date] = None,
+                                con_orden_alta: bool = False) -> Cliente:
         """Registra la ficha de un abonado al concluir su instalación (HU-01).
 
         Pasos:
@@ -98,14 +99,20 @@ class GestionAbonadosService:
             3. Calcula el primer vencimiento (fecha de registro + 1 día); el día
                de ese vencimiento queda como su día de pago.
             4. Guarda el abonado con estado ACTIVO y lo devuelve.
-        No envía órdenes al ruteador: la configuración inicial del equipo es manual.
+            5. Con con_orden_alta=True (registro desde la interfaz), encola en la
+               misma transacción una orden de ACTIVACION con las velocidades del
+               plan: la cola la aplica en el ruteador, deja la cola simple con la
+               velocidad del plan aunque se haya creado con otra, y espera si el
+               ruteador no responde. La orden queda en cliente.orden_alta.
+        No se comunica con el ruteador: eso lo hace la cola de órdenes.
         """
         ip = str(datos.ip_cliente)
 
         # 1. El ruteador y el plan deben existir
         if self.session.get(RouterNode, datos.router_id) is None:
             raise RecursoNoEncontrado(f"No existe el ruteador con id {datos.router_id}.")
-        if self.session.get(PerfilTarifa, datos.tarifa_id) is None:
+        tarifa = self.session.get(PerfilTarifa, datos.tarifa_id)
+        if tarifa is None:
             raise RecursoNoEncontrado(f"No existe el plan con id {datos.tarifa_id}.")
 
         # 2. La IP no puede repetirse en el mismo ruteador
@@ -136,9 +143,14 @@ class GestionAbonadosService:
             saldo_dias_favor=0,
         )
 
-        # 4. Guardar
+        # 4. Guardar (y 5. orden de alta, en la misma transacción)
+        cliente.tarifa = tarifa
         self.session.add(cliente)
+        cliente.orden_alta = None
         try:
+            if con_orden_alta:
+                self.session.flush()            # obtiene el id del abonado para su orden
+                cliente.orden_alta = self._registrar_orden_activacion(cliente)
             self.session.commit()
         except IntegrityError as error:
             # Segunda barrera: si dos registros con la misma IP llegan al mismo
@@ -281,7 +293,7 @@ class GestionAbonadosService:
         gracia: lo pasa a PENDIENTE_SUSPENSION y encola su orden de CORTE.
         Si el corte se aplica antes de su vencimiento, los días pagados que no
         usó se registran como saldo a favor cuando la orden se ejecute en el
-        ruteador (lo hará la cola de órdenes en un bloque posterior).
+        ruteador (lo hace la cola de órdenes, app/cola_sincronizacion.py).
         Errores: RecursoNoEncontrado si no existe; EstadoNoPermitido si no está ACTIVO.
         """
         cliente = self.session.get(Cliente, cliente_id, options=[joinedload(Cliente.tarifa)])

@@ -12,7 +12,8 @@ Con qué se relaciona:
     - app/routers/abonados.py : rutas de abonados (registro, búsqueda, ficha).
     - app/routers/pagos.py    : ruta de pagos (registro del pago del abonado).
     - app/routers/suspensiones.py : ruta de suspensión manual del abonado.
-    - app/tareas.py           : suspensión diaria automática, que arranca al encender el sistema.
+    - app/routers/ordenes.py  : consulta de la cola de órdenes y despacho manual.
+    - app/tareas.py           : suspensión diaria y cola de órdenes, que arrancan al encender el sistema.
     - app/database.py         : conexión con MySQL, usada por /salud/db.
     - Archivo .env            : credenciales de los ruteadores (MK_USER, MK_PASS, MK_PORT).
 """
@@ -27,7 +28,7 @@ from sqlalchemy import text
 
 from app.database import engine
 from app import tareas
-from app.routers import abonados, pagos, suspensiones
+from app.routers import abonados, ordenes, pagos, suspensiones
 
 load_dotenv()                          # carga las variables del archivo .env
 
@@ -35,9 +36,13 @@ load_dotenv()                          # carga las variables del archivo .env
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     """Arranca las tareas automáticas al encender el sistema y las detiene al apagarlo."""
-    tarea = asyncio.create_task(tareas.ciclo_suspension_diaria()) if tareas.SUSPENSION_AUTOMATICA else None
+    en_marcha = []
+    if tareas.SUSPENSION_AUTOMATICA:
+        en_marcha.append(asyncio.create_task(tareas.ciclo_suspension_diaria()))
+    if tareas.COLA_AUTOMATICA:
+        en_marcha.append(asyncio.create_task(tareas.ciclo_cola_ordenes()))
     yield                                   # aquí el sistema atiende solicitudes
-    if tarea:
+    for tarea in en_marcha:
         tarea.cancel()
 
 
@@ -45,6 +50,7 @@ app = FastAPI(title="Sistema WISP", lifespan=ciclo_de_vida)   # aplicación web;
 app.include_router(abonados.router)    # agrega las rutas /abonados (HU-01, HU-02, HU-03)
 app.include_router(pagos.router)       # agrega la ruta /abonados/{id}/pagos (HU-02)
 app.include_router(suspensiones.router)  # agrega la ruta /abonados/{id}/suspension (HU-03)
+app.include_router(ordenes.router)     # agrega las rutas /ordenes (cola de órdenes)
 
 
 @app.get("/")

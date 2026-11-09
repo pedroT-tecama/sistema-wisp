@@ -13,10 +13,11 @@ Con qué se relaciona:
     - app/routers/abonados.py   : recibe AbonadoCrear y responde con AbonadoResumen o AbonadoFicha.
     - app/routers/pagos.py      : recibe PagoCrear y responde con PagoResultado.
     - app/routers/suspensiones.py : responde con SuspensionResultado.
+    - app/routers/ordenes.py    : responde con OrdenDetalle y DespachoResultado.
     - app/services/abonados.py  : recibe AbonadoCrear ya validado.
     - app/models.py             : los esquemas de salida se llenan leyendo los modelos.
 """
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from ipaddress import IPv4Address
 from typing import Optional
@@ -143,6 +144,13 @@ class OrdenResumen(BaseModel):
     estado: str
 
 
+class AbonadoRegistrado(AbonadoFicha):
+    """Respuesta al registrar un abonado: su ficha, la orden de alta encolada y, si hubo, un aviso del ruteador."""
+
+    orden_alta: Optional[OrdenResumen] = None
+    aviso: Optional[str] = None     # p. ej., el ruteador no respondió y la cola aún no se pudo verificar
+
+
 class PagoResultado(BaseModel):
     """Respuesta al registrar un pago: el pago, el nuevo vencimiento y qué pasó con las órdenes."""
 
@@ -167,3 +175,27 @@ class SuspensionResultado(BaseModel):
     fecha_vencimiento: date
     orden_corte: OrdenResumen
     mensaje: str
+
+
+class OrdenDetalle(BaseModel):
+    """Orden de la cola tal como la ve el operador en GET /ordenes."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: int
+    router_id: int
+    accion: str
+    estado: str
+    intentos: int
+    payload_parametros_red: dict
+    fecha_creacion: datetime
+
+
+class DespachoResultado(BaseModel):
+    """Resultado de una vuelta de la cola (POST /ordenes/despachar)."""
+
+    lote: int
+    procesadas: list[int]
+    pendientes: list[int]
+    reactivaciones_por_pago: list[int]

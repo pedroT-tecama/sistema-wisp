@@ -1,0 +1,49 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\Pedro T\Documents\sistema-wisp\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Pedro T\Documents\sistema-wisp
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collecting ... collected 38 items
+
+tests/test_abonados.py::test_primer_vencimiento_es_el_dia_siguiente PASSED [  2%]
+tests/test_abonados.py::test_pu01_ip_repetida_en_el_mismo_ruteador_es_rechazada PASSED [  5%]
+tests/test_abonados.py::test_pu01_misma_ip_en_distritos_distintos_es_aceptada PASSED [  7%]
+tests/test_abonados.py::test_pu02_ruteador_inexistente_es_rechazado PASSED [ 10%]
+tests/test_abonados.py::test_pu02_plan_inexistente_es_rechazado PASSED   [ 13%]
+tests/test_abonados.py::test_pu08_busqueda_por_apellidos_sin_mayusculas_ni_tildes PASSED [ 15%]
+tests/test_abonados.py::test_pu08_busqueda_por_dni_retorna_todos_los_servicios_del_titular PASSED [ 18%]
+tests/test_cola.py::test_corte_aplicado_suspende_al_abonado PASSED       [ 21%]
+tests/test_cola.py::test_corte_antes_del_vencimiento_guarda_saldo_a_favor PASSED [ 23%]
+tests/test_cola.py::test_ruteador_sin_respuesta_deja_la_orden_pendiente PASSED [ 26%]
+tests/test_cola.py::test_reactivacion_aplicada_activa_al_abonado PASSED  [ 28%]
+tests/test_cola.py::test_ordenes_del_mismo_abonado_en_el_orden_de_creacion PASSED [ 31%]
+tests/test_cola.py::test_pago_mientras_se_aplica_el_corte_encola_la_reactivacion PASSED [ 34%]
+tests/test_cola.py::test_ordenes_anuladas_no_se_envian PASSED            [ 36%]
+tests/test_hal.py::test_fabrica_elige_driver_por_version PASSED          [ 39%]
+tests/test_hal.py::test_corte_fija_1k_y_no_repite_el_cambio PASSED       [ 42%]
+tests/test_hal.py::test_reactivacion_restablece_velocidades_del_plan PASSED [ 44%]
+tests/test_hal.py::test_cola_con_varias_direcciones_en_el_target PASSED  [ 47%]
+tests/test_hal.py::test_ip_sin_cola_es_rechazada PASSED                  [ 50%]
+tests/test_hal.py::test_limites_iguales_escritos_distinto PASSED         [ 52%]
+tests/test_hal.py::test_direccion_segun_modo_de_conexion PASSED          [ 55%]
+tests/test_pagos.py::test_pago_puntual_conserva_su_dia_de_pago PASSED    [ 57%]
+tests/test_pagos.py::test_pu04_pago_despues_del_corte_recalcula_y_encola_activacion PASSED [ 60%]
+tests/test_pagos.py::test_pu05_pago_con_corte_pendiente_anula_la_orden PASSED [ 63%]
+tests/test_pagos.py::test_pu03_si_falla_la_orden_no_se_registra_el_pago PASSED [ 65%]
+tests/test_pagos.py::test_pago_de_abonado_inexistente_es_rechazado PASSED [ 68%]
+tests/test_periodo.py::test_primer_vencimiento_y_gracia PASSED           [ 71%]
+tests/test_periodo.py::test_puntual_conserva_su_dia_de_pago PASSED       [ 73%]
+tests/test_periodo.py::test_dia_31_cae_el_ultimo_dia_y_luego_vuelve PASSED [ 76%]
+tests/test_periodo.py::test_dia_30_en_febrero_y_regreso_en_marzo PASSED  [ 78%]
+tests/test_periodo.py::test_pu04_recalculo_tras_el_corte PASSED          [ 81%]
+tests/test_periodo.py::test_gracia_superada_solo_despues_del_ultimo_dia PASSED [ 84%]
+tests/test_periodo.py::test_dias_consumidos_y_saldo_a_favor PASSED       [ 86%]
+tests/test_suspensiones.py::test_pu06_solo_se_corta_a_quien_supero_la_gracia PASSED [ 89%]
+tests/test_suspensiones.py::test_suspension_diaria_repetida_no_duplica_ordenes PASSED [ 92%]
+tests/test_suspensiones.py::test_suspension_manual_de_abonado_activo PASSED [ 94%]
+tests/test_suspensiones.py::test_suspension_manual_rechazada_si_no_esta_activo PASSED [ 97%]
+tests/test_suspensiones.py::test_suspension_manual_de_abonado_inexistente PASSED [100%]
+
+============================= 38 passed in 0.57s ==============================
