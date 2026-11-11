@@ -63,6 +63,7 @@ class RouterNode(Base):
     nombre_equipo: Mapped[str] = mapped_column(String(80))
     tipo_nodo: Mapped[str] = mapped_column(Enum("ROUTER", "ACCESS_POINT", native_enum=False))
     ip_router: Mapped[str] = mapped_column(String(15))           # IP del ruteador: con ella se gestiona por la API
+    ip_gestion_ospf: Mapped[Optional[str]] = mapped_column(String(15))  # bandera OSPF (/32): se compara con las rutas de la cabecera
     puerto_socket: Mapped[int] = mapped_column(SmallInteger)
     version_routeros: Mapped[Optional[str]] = mapped_column(String(10))
     estado_operativo: Mapped[str] = mapped_column(
