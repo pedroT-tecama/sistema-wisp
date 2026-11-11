@@ -102,7 +102,7 @@ def test_limites_iguales_escritos_distinto():
 
 def test_direccion_segun_modo_de_conexion(monkeypatch):
     master = RouterMaster(ddns_url="cabecera.ejemplo.net", puerto_base=8001)
-    router = RouterNode(ip_gestion_ospf="192.168.5.43", puerto_socket=8002, master=master)
+    router = RouterNode(ip_router="192.168.5.43", puerto_socket=8002, master=master)
 
     monkeypatch.setattr(capa_hardware, "MODO_CONEXION", "directo")
     assert HardwareAbstractionLayer.direccion_de(router) == ("192.168.5.43", capa_hardware.PUERTO_API)

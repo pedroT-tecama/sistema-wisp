@@ -62,7 +62,7 @@ class RouterNode(Base):
     padre_id: Mapped[Optional[int]] = mapped_column(ForeignKey("router_node.id"))  # ruteador superior
     nombre_equipo: Mapped[str] = mapped_column(String(80))
     tipo_nodo: Mapped[str] = mapped_column(Enum("ROUTER", "ACCESS_POINT", native_enum=False))
-    ip_gestion_ospf: Mapped[str] = mapped_column(String(15))
+    ip_router: Mapped[str] = mapped_column(String(15))           # IP del ruteador: con ella se gestiona por la API
     puerto_socket: Mapped[int] = mapped_column(SmallInteger)
     version_routeros: Mapped[Optional[str]] = mapped_column(String(10))
     estado_operativo: Mapped[str] = mapped_column(

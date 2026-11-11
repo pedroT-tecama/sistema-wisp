@@ -7,7 +7,7 @@ Qué hace:
     la usa no necesita saber si el equipo tiene RouterOS 6 o 7.
 
 A qué dirección se conecta (MK_MODO_CONEXION en el archivo .env):
-    - "directo" (por defecto): a la IP de gestión del ruteador (ip_gestion_ospf)
+    - "directo" (por defecto): a la IP del ruteador (ip_router)
       y al puerto de la API (MK_PORT, 8728). Se usa cuando el equipo central
       llega a los ruteadores por rutas, como en la red del caso de estudio.
     - "cabecera": a la dirección de la cabecera del distrito (ddns_url) y al
@@ -56,7 +56,7 @@ class HardwareAbstractionLayer:
         if isinstance(router, RouterMaster):
             return router.ddns_url, (PUERTO_API if MODO_CONEXION == "directo" else router.puerto_base)
         if MODO_CONEXION == "directo":
-            return router.ip_gestion_ospf, PUERTO_API
+            return router.ip_router, PUERTO_API
         return router.master.ddns_url, router.puerto_socket
 
     async def _ejecutar(self, router, operacion):

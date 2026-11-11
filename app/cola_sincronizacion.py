@@ -141,7 +141,7 @@ class ControladorColaSincronizacion:
         """Copia la orden y los datos de conexión de su ruteador para usarlos fuera de la sesión."""
         p = orden.payload_parametros_red
         destino = SimpleNamespace(
-            nombre_equipo=router.nombre_equipo, ip_gestion_ospf=router.ip_gestion_ospf,
+            nombre_equipo=router.nombre_equipo, ip_router=router.ip_router,
             puerto_socket=router.puerto_socket, version_routeros=router.version_routeros,
             master=SimpleNamespace(ddns_url=router.master.ddns_url, puerto_base=router.master.puerto_base),
         )

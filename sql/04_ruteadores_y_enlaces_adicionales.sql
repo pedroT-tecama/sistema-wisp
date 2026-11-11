@@ -39,24 +39,24 @@ USE wisp_db;                       -- se ejecuta siempre sobre la base de operac
 START TRANSACTION;
 
 -- La cabecera se obtiene del ruteador Condominio 1 - E7, ya registrado en el script 02
-SET @nodo_e7 := (SELECT id FROM router_node WHERE ip_gestion_ospf = '192.168.5.43');
+SET @nodo_e7 := (SELECT id FROM router_node WHERE ip_router = '192.168.5.43');
 SET @master  := (SELECT master_id FROM router_node WHERE id = @nodo_e7);
 
 -- 1. Condominio 1 - Torre 3: cuelga de E7 por cable
-INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_gestion_ospf,
+INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_router,
                          puerto_socket, version_routeros, estado_operativo) VALUES
     (@master, @nodo_e7, 'Condominio 1 - Torre 3', 'ROUTER', '192.168.108.2', 8003, '7.13.3', 'CHECK_OK');
 
 SET @nodo_torre3 := (SELECT id FROM router_node
-                     WHERE master_id = @master AND ip_gestion_ospf = '192.168.108.2');
+                     WHERE master_id = @master AND ip_router = '192.168.108.2');
 
 -- 2. Condominio 3 - Torre 5: cuelga de Torre 3 por radioenlace
-INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_gestion_ospf,
+INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_router,
                          puerto_socket, version_routeros, estado_operativo) VALUES
     (@master, @nodo_torre3, 'Condominio 3 - Torre 5', 'ROUTER', '192.168.112.4', 8004, '7.8', 'CHECK_OK');
 
 SET @nodo_torre5 := (SELECT id FROM router_node
-                     WHERE master_id = @master AND ip_gestion_ospf = '192.168.112.4');
+                     WHERE master_id = @master AND ip_router = '192.168.112.4');
 
 -- 3. Radioenlace troncal Torre 3 -> Torre 5 (antenas MikroTik, umbral -68 dBm)
 INSERT INTO enlace_backhaul_ptp (router_origen_id, router_destino_id, nombre_enlace,
@@ -68,6 +68,6 @@ INSERT INTO enlace_backhaul_ptp (router_origen_id, router_destino_id, nombre_enl
 COMMIT;
 
 -- Verificación
-SELECT id, padre_id, nombre_equipo, ip_gestion_ospf, version_routeros FROM router_node ORDER BY id;
+SELECT id, padre_id, nombre_equipo, ip_router, version_routeros FROM router_node ORDER BY id;
 SELECT id, router_origen_id, router_destino_id, nombre_enlace, ip_antena_origen, ip_antena_destino,
        rssi_minimo_esperado FROM enlace_backhaul_ptp ORDER BY id;

@@ -55,9 +55,9 @@ def red(session):
     session.add_all([distrito_a, distrito_b])
     session.flush()
     router_a = RouterNode(master_id=distrito_a.id, nombre_equipo="Router A", tipo_nodo="ROUTER",
-                          ip_gestion_ospf="10.0.0.2", puerto_socket=8002)
+                          ip_router="10.0.0.2", puerto_socket=8002)
     router_b = RouterNode(master_id=distrito_b.id, nombre_equipo="Router B", tipo_nodo="ROUTER",
-                          ip_gestion_ospf="10.0.1.2", puerto_socket=8002)
+                          ip_router="10.0.1.2", puerto_socket=8002)
     plan = PerfilTarifa(nombre_plan="Plan Prueba", precio_mensual=50, rate_upload="4M", rate_download="7M")
     session.add_all([router_a, router_b, plan])
     session.flush()

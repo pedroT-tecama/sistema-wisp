@@ -71,7 +71,7 @@ class RouterResumen(BaseModel):
 
     id: int
     nombre_equipo: str
-    ip_gestion_ospf: str
+    ip_router: str
 
 
 class PlanResumen(BaseModel):

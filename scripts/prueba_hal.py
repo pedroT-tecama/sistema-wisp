@@ -46,13 +46,13 @@ async def main() -> None:
     args = parser.parse_args()
 
     with SessionLocal() as session:
-        router = session.scalars(select(RouterNode).where(RouterNode.ip_gestion_ospf == args.router)).first()
+        router = session.scalars(select(RouterNode).where(RouterNode.ip_router == args.router)).first()
         if router is None:
             raise SystemExit(f"El ruteador {args.router} no está registrado en la base de datos.")
         session.expunge(router)          # se usa fuera de la sesión; solo se leen sus datos
 
     hal = HardwareAbstractionLayer()
-    print(f"Ruteador: {router.nombre_equipo} ({router.ip_gestion_ospf}, RouterOS {router.version_routeros})")
+    print(f"Ruteador: {router.nombre_equipo} ({router.ip_router}, RouterOS {router.version_routeros})")
     print(f"Driver: {type(hal.obtener_driver(router)).__name__}")
 
     if args.accion == "cortar":

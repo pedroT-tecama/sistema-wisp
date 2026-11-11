@@ -41,20 +41,20 @@ SET @master := (SELECT id FROM router_master WHERE nombre_distrito = 'Bellavista
 -- 3. Ruteadores
 -- ---------------------------------------------------------------------
 -- 3.1 Ruteador de la cabecera como nodo raíz (C-05)
-INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_gestion_ospf,
+INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_router,
                          puerto_socket, version_routeros, estado_operativo) VALUES
     (@master, NULL, 'Cabecera Bellavista Sector 2', 'ROUTER', '192.168.5.1', 8001, '6.48.3', 'CHECK_OK');
 
 SET @nodo_cabecera := (SELECT id FROM router_node
-                       WHERE master_id = @master AND ip_gestion_ospf = '192.168.5.1');
+                       WHERE master_id = @master AND ip_router = '192.168.5.1');
 
 -- 3.2 Ruteador de borde conectado a la cabecera por el enlace PTP
-INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_gestion_ospf,
+INSERT INTO router_node (master_id, padre_id, nombre_equipo, tipo_nodo, ip_router,
                          puerto_socket, version_routeros, estado_operativo) VALUES
     (@master, @nodo_cabecera, 'Condominio 1 - E7', 'ROUTER', '192.168.5.43', 8002, '7.21.4', 'CHECK_OK');
 
 SET @nodo_condominio := (SELECT id FROM router_node
-                        WHERE master_id = @master AND ip_gestion_ospf = '192.168.5.43');
+                        WHERE master_id = @master AND ip_router = '192.168.5.43');
 
 -- ---------------------------------------------------------------------
 -- 4. Enlace troncal punto a punto (antenas MikroTik MIMO, umbral -68 dBm)
@@ -72,7 +72,7 @@ COMMIT;
 -- ---------------------------------------------------------------------
 SELECT id, nombre_plan, precio_mensual, rate_upload, rate_download FROM perfil_tarifa;
 
-SELECT n.id, n.nombre_equipo, n.ip_gestion_ospf, n.version_routeros,
+SELECT n.id, n.nombre_equipo, n.ip_router, n.version_routeros,
        p.nombre_equipo AS depende_de, m.nombre_distrito
 FROM router_node n
 JOIN router_master m ON m.id = n.master_id
