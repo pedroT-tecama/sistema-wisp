@@ -9,3 +9,6 @@ sql/00_crear_bases_y_usuario.sql
 
 # Archivos anteriores a la reorganización (borrar manualmente)
 _to_delete/
+
+# Ajustes del editor
+.vscode/
