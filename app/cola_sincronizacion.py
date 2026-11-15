@@ -19,6 +19,9 @@ Reglas del despacho:
       ACTIVACION del mismo abonado se aplican en el orden en que se crearon.
     - Las órdenes de abonados distintos se aplican a la vez (de forma
       concurrente), hasta COLA_CONCURRENCIA a la vez.
+    - Las órdenes de un ruteador en NODO_CAIDO (según el monitoreo) no se
+      envían ni suman intentos: esperan PENDIENTE hasta que el ruteador
+      vuelva a CHECK_OK, para no gastar conexiones en un equipo caído.
     - Si el abonado pagó mientras su corte se estaba aplicando, la orden ya
       figura ANULADO al confirmar: el corte quedó aplicado en el ruteador, por
       lo que se encola de inmediato su reactivación.
@@ -120,7 +123,10 @@ class ControladorColaSincronizacion:
         return resumen
 
     def _tomar_ordenes(self) -> list[OrdenADespachar]:
-        """Lee las órdenes PENDIENTE y devuelve la más antigua de cada abonado, con los datos de su ruteador."""
+        """Lee las órdenes PENDIENTE y devuelve la más antigua de cada abonado, con los datos de su ruteador.
+
+        Deja fuera las órdenes de los ruteadores en NODO_CAIDO: siguen PENDIENTE para una vuelta posterior.
+        """
         with self._sesion() as s:
             pendientes = s.scalars(
                 select(TareaPendienteRed).where(TareaPendienteRed.estado == "PENDIENTE").order_by(TareaPendienteRed.id)
@@ -134,7 +140,12 @@ class ControladorColaSincronizacion:
                 select(RouterNode).options(joinedload(RouterNode.master))
                 .where(RouterNode.id.in_({o.router_id for o in primeras}))
             ).unique()}
-            return [self._copiar(o, routers[o.router_id]) for o in primeras]
+            en_espera = [o.id for o in primeras if routers[o.router_id].estado_operativo == "NODO_CAIDO"]
+            if en_espera:
+                log.info("Lote %s: órdenes %s en espera, su ruteador está caído (NODO_CAIDO).",
+                         self.id_lote_comercial, en_espera)
+            return [self._copiar(o, routers[o.router_id]) for o in primeras
+                    if routers[o.router_id].estado_operativo != "NODO_CAIDO"]   # ruteador caído: sus órdenes esperan
 
     @staticmethod
     def _copiar(orden: TareaPendienteRed, router: RouterNode) -> OrdenADespachar:

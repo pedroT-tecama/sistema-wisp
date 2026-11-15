@@ -16,8 +16,9 @@ Con qué se relaciona:
     - tests/conftest.py             : crea datos de prueba con RouterMaster, RouterNode y PerfilTarifa.
 
 Hasta este bloque se describen las tablas del registro de abonados, de los
-pagos (caja_ingreso) y de la cola de órdenes (tarea_pendiente_red). Las de
-alertas y enlaces se agregan en sus bloques.
+pagos (caja_ingreso), de la cola de órdenes (tarea_pendiente_red) y de las
+alertas del monitoreo (registro_alerta). Las de enlaces y lecturas de señal
+se agregan en su bloque.
 """
 from datetime import date, datetime
 from decimal import Decimal
@@ -71,6 +72,21 @@ class RouterNode(Base):
     )
 
     master: Mapped[RouterMaster] = relationship()   # permite leer el distrito desde el ruteador
+    padre: Mapped[Optional["RouterNode"]] = relationship(remote_side=[id])   # ruteador superior en el árbol
+
+    def es_hijo_directo_del_master(self) -> bool:
+        """Verdadero si su ruteador superior es la cabecera (el nodo raíz del distrito).
+
+        Lo usa app/monitoreo.py al redactar la alerta de un ruteador caído.
+        """
+        return self.padre is not None and self.padre.padre_id is None
+
+    def es_nodo_en_cascada(self) -> bool:
+        """Verdadero si su ruteador superior es otro ruteador de borde (depende de él para llegar a la cabecera).
+
+        Lo usa app/monitoreo.py al redactar la alerta de un ruteador caído.
+        """
+        return self.padre is not None and self.padre.padre_id is not None
 
 
 class PerfilTarifa(Base):
@@ -154,3 +170,25 @@ class TareaPendienteRed(Base):
         Enum("PENDIENTE", "PROCESADO", "ANULADO", native_enum=False), default="PENDIENTE"
     )
     fecha_creacion: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class RegistroAlerta(Base):
+    """Tabla registro_alerta: fallas detectadas por el monitoreo (HU-04, HU-05).
+
+    Cada alerta tiene un solo origen: una cabecera (master_id), un ruteador
+    (router_id) o un enlace troncal (enlace_id). Queda abierta mientras
+    fecha_resolucion está vacía; al resolverse la falla se registra la fecha y
+    la fila se conserva como historial de averías del equipo.
+    """
+
+    __tablename__ = "registro_alerta"
+
+    id_alerta: Mapped[int] = mapped_column(primary_key=True)
+    prefijo_excepcion: Mapped[str] = mapped_column(
+        Enum("OSPF_RUTA_AUSENTE", "PTP_DEGRADADO", "CABECERA_INACCESIBLE", native_enum=False))
+    master_id: Mapped[Optional[int]] = mapped_column(ForeignKey("router_master.id"))   # cabecera sin respuesta
+    router_id: Mapped[Optional[int]] = mapped_column(ForeignKey("router_node.id"))     # ruteador sin ruta OSPF
+    enlace_id: Mapped[Optional[int]] = mapped_column(Integer)                          # enlace con señal baja
+    descripcion_error: Mapped[str] = mapped_column(String(500))
+    fecha_registro: Mapped[datetime] = mapped_column(DateTime)
+    fecha_resolucion: Mapped[Optional[datetime]] = mapped_column(DateTime)              # vacía = alerta abierta

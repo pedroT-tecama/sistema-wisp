@@ -8,6 +8,7 @@ Qué prueba:
     - Órdenes del mismo abonado: el corte y la reactivación se aplican en el orden en que se crearon.
     - Pago durante el corte: si el corte se anuló mientras se aplicaba, se encola la reactivación.
     - Las órdenes ANULADO no se envían al ruteador.
+    - Las órdenes de un ruteador en NODO_CAIDO esperan sin enviarse ni sumar intentos, y se aplican cuando vuelve.
 
 Cómo se prueba sin ruteador:
     RuteadorSimulado reemplaza a HardwareAbstractionLayer: registra cada orden
@@ -26,7 +27,7 @@ from sqlalchemy import select
 
 from app.cola_sincronizacion import ControladorColaSincronizacion
 from app.hal.cliente_api import ErrorConexionRouter
-from app.models import TareaPendienteRed
+from app.models import RouterNode, TareaPendienteRed
 from app.schemas import AbonadoCrear, PagoCrear
 from app.services.abonados import GestionAbonadosService
 
@@ -192,3 +193,26 @@ def test_ordenes_anuladas_no_se_envian(session, red):
 
     assert ruteador.recibidas == []
     assert r.orden.estado == "ANULADO"
+
+
+# ------------------------------------------------------------ ruteador caído
+def test_ruteador_caido_retiene_sus_ordenes(session, red):
+    """Con el ruteador en NODO_CAIDO, la orden no se envía ni suma intentos; cuando vuelve a CHECK_OK, se aplica."""
+    servicio = GestionAbonadosService(session)
+    r = abonado_en_corte(servicio, red, "192.168.103.138", "47000008", date(2026, 10, 1))
+    router = session.get(RouterNode, red["router_a"])
+    router.estado_operativo = "NODO_CAIDO"                  # el monitoreo lo marcó caído
+    session.commit()
+    ruteador = RuteadorSimulado()
+    ctrl = controlador(session, ruteador)
+
+    primera = despachar(ctrl)
+    assert ruteador.recibidas == []
+    assert (primera.procesadas, primera.pendientes) == ([], [])
+    assert (r.orden.estado, r.orden.intentos) == ("PENDIENTE", 0)
+
+    router.estado_operativo = "CHECK_OK"                    # el monitoreo lo restableció
+    session.commit()
+    segunda = despachar(ctrl)
+    assert segunda.procesadas == [r.orden.id]
+    assert r.cliente.estado == "SUSPENDIDO"

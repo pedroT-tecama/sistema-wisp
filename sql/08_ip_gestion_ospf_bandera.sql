@@ -14,8 +14,7 @@
 --     y un ruteador sin bandera configurada no se vigila.
 --   - No se repite dentro del mismo distrito (UNIQUE con master_id; MySQL
 --     admite varias filas vacías).
---   - Se llena con las banderas ya configuradas en la red de pruebas.
---     E7 (192.168.5.43) queda vacía hasta configurar la suya.
+--   - Se llena con las banderas configuradas en la red de pruebas.
 --
 -- Cuándo se ejecuta:
 --   Una sola vez, después del script 07. Agrega la columna en wisp_db y en
@@ -41,6 +40,7 @@ UPDATE wisp_db.router_node SET ip_gestion_ospf = '10.0.5.33'  WHERE ip_router = 
 UPDATE wisp_db.router_node SET ip_gestion_ospf = '10.0.108.2' WHERE ip_router = '192.168.108.2';
 UPDATE wisp_db.router_node SET ip_gestion_ospf = '10.0.112.4' WHERE ip_router = '192.168.112.4';
 UPDATE wisp_db.router_node SET ip_gestion_ospf = '10.0.5.14'  WHERE ip_router = '192.168.5.14';
+UPDATE wisp_db.router_node SET ip_gestion_ospf = '10.0.5.43'  WHERE ip_router = '192.168.5.43';
 
 -- Verificación
 SELECT id, nombre_equipo, ip_router, ip_gestion_ospf, puerto_socket FROM wisp_db.router_node ORDER BY id;

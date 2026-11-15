@@ -199,3 +199,40 @@ class DespachoResultado(BaseModel):
     procesadas: list[int]
     pendientes: list[int]
     reactivaciones_por_pago: list[int]
+
+
+class RuteadorEstado(BaseModel):
+    """Estado de un ruteador según el monitoreo (GET /monitoreo/ruteadores)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre_equipo: str
+    ip_router: str
+    ip_gestion_ospf: Optional[str]
+    padre_id: Optional[int]
+    estado_operativo: str
+
+
+class AlertaDetalle(BaseModel):
+    """Alerta registrada por el monitoreo (GET /monitoreo/alertas)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id_alerta: int
+    prefijo_excepcion: str
+    master_id: Optional[int]
+    router_id: Optional[int]
+    enlace_id: Optional[int]
+    descripcion_error: str
+    fecha_registro: datetime
+    fecha_resolucion: Optional[datetime]
+
+
+class EvaluacionResultado(BaseModel):
+    """Resultado de una vuelta del monitoreo (POST /monitoreo/evaluar)."""
+
+    vuelta: int
+    caidos: list[int]
+    restablecidos: list[int]
+    cabeceras_sin_respuesta: list[int]

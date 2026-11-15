@@ -11,6 +11,10 @@ Qué hace:
       aplica en los ruteadores las órdenes de corte y reactivación pendientes,
       mediante ControladorColaSincronizacion. Al encender el sistema retoma las
       que quedaron pendientes. Se desactiva con COLA_AUTOMATICA=0.
+    - Monitoreo de conectividad (HU-04): cada MONITOREO_INTERVALO_SEGUNDOS (60
+      por defecto) compara las banderas OSPF de los ruteadores con la tabla de
+      rutas de cada cabecera, mediante MotorTelemetriaProactiva. Se desactiva
+      con MONITOREO_AUTOMATICO=0.
 
 Cómo funciona:
     El sistema web atiende solicitudes de forma asíncrona. Para no detenerlo
@@ -20,7 +24,8 @@ Cómo funciona:
 Con qué se relaciona:
     - Lo arranca: app/main.py, al encender el sistema.
     - Llama a: app/services/abonados.py (procesar_vencimientos) y
-      app/cola_sincronizacion.py (ControladorColaSincronizacion).
+      app/cola_sincronizacion.py (ControladorColaSincronizacion) y
+      app/monitoreo.py (MotorTelemetriaProactiva).
     - Usa: app/database.py (SessionLocal) para abrir su propia sesión.
 """
 import asyncio
@@ -31,6 +36,7 @@ from dotenv import load_dotenv
 
 from app.cola_sincronizacion import ControladorColaSincronizacion
 from app.database import SessionLocal
+from app.monitoreo import MotorTelemetriaProactiva
 from app.services.abonados import GestionAbonadosService
 
 load_dotenv()
@@ -41,6 +47,9 @@ INTERVALO_HORAS = float(os.getenv("SUSPENSION_INTERVALO_HORAS", "24"))
 COLA_AUTOMATICA = os.getenv("COLA_AUTOMATICA", "1") == "1"
 COLA_INTERVALO_SEGUNDOS = float(os.getenv("COLA_INTERVALO_SEGUNDOS", "30"))
 controlador = ControladorColaSincronizacion()     # un solo controlador para todo el sistema
+MONITOREO_AUTOMATICO = os.getenv("MONITOREO_AUTOMATICO", "1") == "1"
+MONITOREO_INTERVALO_SEGUNDOS = float(os.getenv("MONITOREO_INTERVALO_SEGUNDOS", "60"))
+monitor = MotorTelemetriaProactiva()              # un solo motor: guarda las ausencias seguidas de cada ruteador
 
 
 def revisar_vencimientos() -> int:
@@ -78,3 +87,16 @@ async def ciclo_cola_ordenes():
         except Exception as error:                  # un error no detiene la cola; se reintenta en la siguiente vuelta
             log.error("Error en la cola de órdenes: %s", error)
         await asyncio.sleep(COLA_INTERVALO_SEGUNDOS)
+
+
+async def ciclo_monitoreo():
+    """Compara las banderas OSPF con la tabla de cada cabecera cada MONITOREO_INTERVALO_SEGUNDOS."""
+    while True:
+        try:
+            r = await monitor.ejecutar_monitoreo_distrital()
+            if r.caidos or r.restablecidos or r.cabeceras_sin_respuesta:
+                log.info("Monitoreo, vuelta %s: %s caído(s), %s restablecido(s), %s cabecera(s) sin respuesta.",
+                         r.vuelta, len(r.caidos), len(r.restablecidos), len(r.cabeceras_sin_respuesta))
+        except Exception as error:                  # un error no detiene el monitoreo; se reintenta en la siguiente vuelta
+            log.error("Error en el monitoreo: %s", error)
+        await asyncio.sleep(MONITOREO_INTERVALO_SEGUNDOS)
