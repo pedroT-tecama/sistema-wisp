@@ -9,17 +9,20 @@ Qué prueba:
     - Si la cabecera no responde, se registra CABECERA_INACCESIBLE y no se cambian los estados;
       cuando vuelve a responder, la alerta se cierra.
     - RouterNode distingue al ruteador conectado a la cabecera del que depende de otro ruteador (cascada).
+    - Correo de alerta: uno solo por vuelta (la cascada va en el mismo correo), otro al restablecerse,
+      otro si la cabecera no responde, ninguno si no hay cambios; si el correo falla, el monitoreo sigue.
 
 Cómo se prueba sin red:
     CabeceraSimulada reemplaza a HardwareAbstractionLayer y devuelve la tabla de
-    rutas que cada prueba indica, o simula que la cabecera no responde. La base
+    rutas que cada prueba indica, o simula que la cabecera no responde.
+    CorreoSimulado reemplaza a NotificadorCorreo: guarda los correos en lugar de enviarlos. La base
     es wisp_test, con la preparación "session" de tests/conftest.py.
 
     Red de prueba (como el distrito del caso de estudio):
         Cabecera (raíz) -> Torre 6 -> Torre 3 -> Torre 5,   y Cabecera -> AP
 
 Con qué se relaciona:
-    - Prueba app/monitoreo.py (MotorTelemetriaProactiva).
+    - Prueba app/monitoreo.py (MotorTelemetriaProactiva) y su uso de app/notificador.py.
 """
 import asyncio
 from contextlib import nullcontext
@@ -47,6 +50,20 @@ class CabeceraSimulada:
         return self.rutas
 
 
+class CorreoSimulado:
+    """Reemplazo de NotificadorCorreo: guarda (asunto, cuerpo) de cada correo o simula que el envío falla."""
+
+    def __init__(self, falla=False):
+        self.activo = True
+        self.falla = falla
+        self.enviados = []
+
+    def enviar(self, asunto, cuerpo):
+        if self.falla:
+            raise OSError("el servidor de correo no responde (simulado)")
+        self.enviados.append((asunto, cuerpo))
+
+
 @pytest.fixture
 def distrito(session):
     """Distrito de prueba: cabecera (raíz), Torre 6 -> Torre 3 -> Torre 5 y un AP, cada uno con su bandera."""
@@ -70,9 +87,10 @@ def distrito(session):
     return {"master": master, "torre6": torre6, "torre3": torre3, "torre5": torre5, "ap": ap}
 
 
-def motor(session, cabecera):
-    """Motor que usa la sesión de prueba (sin cerrarla), la cabecera simulada y 2 lecturas para declarar la caída."""
-    return MotorTelemetriaProactiva(sesion=lambda: nullcontext(session), hal=cabecera, lecturas=2)
+def motor(session, cabecera, correo=None):
+    """Motor con la sesión de prueba (sin cerrarla), la cabecera simulada, 2 lecturas y un correo simulado."""
+    return MotorTelemetriaProactiva(sesion=lambda: nullcontext(session), hal=cabecera, lecturas=2,
+                                    correo=correo or CorreoSimulado())
 
 
 def tabla(*nombres):
@@ -186,3 +204,58 @@ def test_cabecera_sin_respuesta(session, distrito):
     cabecera.rutas = tabla("torre6", "torre3", "torre5", "ap")
     evaluar(m)
     assert alertas(session, master_id=distrito["master"].id)[0].fecha_resolucion is not None
+
+
+# ------------------------------------------------------------ correo de alerta
+def test_correo_unico_por_vuelta_con_la_cascada(session, distrito):
+    """Caen Torre 3 y Torre 5 en la misma vuelta: un solo correo con las dos fallas; sin cambios, no hay correo."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    cabecera.rutas = tabla("torre6", "ap")
+    m = motor(session, cabecera, correo)
+    evaluar(m)
+    assert correo.enviados == []                                    # primera ausencia: aún no hay alerta
+    evaluar(m)
+    assert len(correo.enviados) == 1
+    asunto, cuerpo = correo.enviados[0]
+    assert "ALERTA: 2 falla(s)" in asunto
+    assert "Torre 3 Prueba" in cuerpo and "Torre 5 Prueba" in cuerpo and "cascada" in cuerpo
+    evaluar(m)
+    assert len(correo.enviados) == 1                                # la caída sigue: no se repite
+
+
+def test_correo_de_restablecimiento(session, distrito):
+    """Cuando el AP vuelve, llega un correo de restablecimiento."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    m = motor(session, cabecera, correo)
+    cabecera.rutas = tabla("torre6", "torre3", "torre5")
+    evaluar(m)
+    evaluar(m)
+    cabecera.rutas = tabla("torre6", "torre3", "torre5", "ap")
+    evaluar(m)
+    asunto, cuerpo = correo.enviados[-1]
+    assert "Restablecido" in asunto and "AP Prueba" in cuerpo
+
+
+def test_correo_por_cabecera_sin_respuesta(session, distrito):
+    """La cabecera no responde: un correo con CABECERA_INACCESIBLE; al volver, otro de restablecimiento."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    cabecera.responde = False
+    m = motor(session, cabecera, correo)
+    evaluar(m)
+    evaluar(m)
+    assert len(correo.enviados) == 1 and "Cabecera Prueba" in correo.enviados[0][1]
+    cabecera.responde = True
+    cabecera.rutas = tabla("torre6", "torre3", "torre5", "ap")
+    evaluar(m)
+    assert len(correo.enviados) == 2 and "volvió a responder" in correo.enviados[1][1]
+
+
+def test_correo_fallido_no_detiene_el_monitoreo(session, distrito):
+    """Si el correo falla, la caída igual se registra en la base."""
+    cabecera = CabeceraSimulada()
+    cabecera.rutas = tabla("torre6", "torre3", "torre5")
+    m = motor(session, cabecera, CorreoSimulado(falla=True))
+    evaluar(m)
+    r = evaluar(m)
+    assert r.caidos == [distrito["ap"].id]
+    assert len(alertas(session, router_id=distrito["ap"].id)) == 1
