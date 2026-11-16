@@ -27,12 +27,13 @@ ORDER BY r.master_id, r.id;
 --    La descripción se recorta a 90 caracteres; el texto completo está en la consulta 3.
 SELECT  a.id_alerta                                           AS id,
         a.prefijo_excepcion                                   AS tipo,
-        COALESCE(r.nombre_equipo, CONCAT('Cabecera, distrito ', a.master_id)) AS origen,
+        COALESCE(r.nombre_equipo, e.nombre_enlace, CONCAT('Cabecera, distrito ', a.master_id)) AS origen,
         DATE_FORMAT(a.fecha_registro,   '%d/%m %H:%i:%s')     AS registro,
         COALESCE(DATE_FORMAT(a.fecha_resolucion, '%d/%m %H:%i:%s'), 'ABIERTA') AS resolucion,
         LEFT(a.descripcion_error, 90)                         AS descripcion
 FROM    registro_alerta a
 LEFT JOIN router_node r ON r.id = a.router_id
+LEFT JOIN enlace_backhaul_ptp e ON e.id = a.enlace_id
 ORDER BY a.id_alerta DESC;
 
 -- 3. Texto completo de una alerta (cambiar el número por el id que se quiera ver).
@@ -57,3 +58,20 @@ FROM    registro_alerta a
 LEFT JOIN router_node r ON r.id = a.router_id
 WHERE   a.fecha_resolucion IS NOT NULL
 ORDER BY a.id_alerta;
+
+-- 6. Enlaces troncales con su umbral y su última lectura de señal.
+SELECT  e.id, e.nombre_enlace AS enlace, e.ip_antena_destino AS antena,
+        e.rssi_minimo_esperado AS umbral_dbm,
+        (SELECT l.rssi_medido FROM lectura_senal_enlace l
+          WHERE l.enlace_id = e.id ORDER BY l.id DESC LIMIT 1) AS ultima_dbm,
+        (SELECT DATE_FORMAT(MAX(l.fecha_hora), '%d/%m %H:%i:%s') FROM lectura_senal_enlace l
+          WHERE l.enlace_id = e.id) AS ultima_lectura
+FROM    enlace_backhaul_ptp e
+ORDER BY e.id;
+
+-- 7. Últimas 10 lecturas de un enlace (cambiar el número por el id del enlace).
+SELECT  id, rssi_medido AS dbm, DATE_FORMAT(fecha_hora, '%d/%m %H:%i:%s') AS hora
+FROM    lectura_senal_enlace
+WHERE   enlace_id = 1
+ORDER BY id DESC
+LIMIT 10;

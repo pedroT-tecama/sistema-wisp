@@ -24,7 +24,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import JSON, Date, DateTime, Enum, ForeignKey, Integer, Numeric, SmallInteger, String
+from sqlalchemy import JSON, BigInteger, Date, DateTime, Enum, ForeignKey, Integer, Numeric, SmallInteger, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -87,6 +87,47 @@ class RouterNode(Base):
         Lo usa app/monitoreo.py al redactar la alerta de un ruteador caído.
         """
         return self.padre is not None and self.padre.padre_id is not None
+
+
+class EnlaceBackhaulPTP(Base):
+    """Tabla enlace_backhaul_ptp: enlaces troncales inalámbricos punto a punto entre dos ruteadores (HU-05).
+
+    Guarda las IP de gestión de las dos antenas y el umbral de señal del enlace
+    (rssi_minimo_esperado, en dBm). La señal se lee en la antena receptora
+    (ip_antena_destino). Lo usa app/monitoreo.py (evaluar_senal_enlaces).
+    """
+
+    __tablename__ = "enlace_backhaul_ptp"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    router_origen_id: Mapped[int] = mapped_column(ForeignKey("router_node.id"))    # extremo que emite
+    router_destino_id: Mapped[int] = mapped_column(ForeignKey("router_node.id"))   # extremo que recibe
+    nombre_enlace: Mapped[str] = mapped_column(String(80))
+    ip_antena_origen: Mapped[str] = mapped_column(String(15))
+    ip_antena_destino: Mapped[str] = mapped_column(String(15))       # antena donde se lee la señal
+    rssi_minimo_esperado: Mapped[int] = mapped_column(SmallInteger)  # umbral en dBm, ej. -68
+    frecuencia_operacion: Mapped[Optional[str]] = mapped_column(String(20))
+
+    origen: Mapped[RouterNode] = relationship(foreign_keys=[router_origen_id])   # para saber su distrito
+
+    def senal_degradada(self, rssi_medido: int) -> bool:
+        """Verdadero si la señal medida es menor que el umbral del enlace (regla de negocio, sin tocar equipos)."""
+        return rssi_medido < self.rssi_minimo_esperado
+
+
+class LecturaSenalEnlace(Base):
+    """Tabla lectura_senal_enlace: historial de lecturas de señal (RSSI) de cada enlace troncal.
+
+    Cada vuelta del monitoreo agrega una lectura por enlace; las más antiguas que
+    SENAL_DIAS_HISTORICO se borran. Lo usa app/monitoreo.py.
+    """
+
+    __tablename__ = "lectura_senal_enlace"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    enlace_id: Mapped[int] = mapped_column(ForeignKey("enlace_backhaul_ptp.id"))
+    rssi_medido: Mapped[int] = mapped_column(SmallInteger)           # dBm
+    fecha_hora: Mapped[datetime] = mapped_column(DateTime)
 
 
 class PerfilTarifa(Base):

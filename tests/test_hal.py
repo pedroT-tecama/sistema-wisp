@@ -25,7 +25,9 @@ import pytest
 
 from app.hal import capa_hardware
 from app.hal.capa_hardware import HardwareAbstractionLayer
-from app.hal.drivers import ColaNoEncontrada, RouterOSv6Driver, RouterOSv7Driver, mismo_limite
+from app.hal.cliente_api import ErrorComandoRouter
+from app.hal.drivers import (ColaNoEncontrada, RouterOSDriver, RouterOSv6Driver, RouterOSv7Driver,
+                             SenalNoDisponible, a_dbm, mismo_limite)
 from app.models import RouterMaster, RouterNode
 
 
@@ -109,3 +111,38 @@ def test_direccion_segun_modo_de_conexion(monkeypatch):
 
     monkeypatch.setattr(capa_hardware, "MODO_CONEXION", "cabecera")
     assert HardwareAbstractionLayer._direccion_de(router) == ("cabecera.ejemplo.net", 8002)
+
+
+# ------------------------------------------------------------ señal del radioenlace
+class AntenaSimulada:
+    """Reemplazo de MikrotikAPIClient para una antena: tabla de registro wireless o wifi, o ninguna."""
+
+    def __init__(self, wireless=None, wifi=None):
+        self.tablas = {"/interface/wireless/registration-table/print": wireless,
+                       "/interface/wifi/registration-table/print": wifi}
+
+    async def enviar_trama_binaria(self, cmd, **parametros):
+        tabla = self.tablas.get(cmd)
+        if tabla is None:
+            raise ErrorComandoRouter(f"no such command prefix ({cmd})")
+        return tabla
+
+
+def test_senal_en_formato_routeros():
+    """La señal se toma del número inicial: "-58@HT20-7" -> -58; sin número -> None."""
+    assert a_dbm("-58@HT20-7") == -58 and a_dbm("-61") == -61 and a_dbm(-70) == -70
+    assert a_dbm("") is None and a_dbm(None) is None
+
+
+def test_lee_senal_en_wireless_y_en_wifi():
+    """Antena con paquete wireless (RouterOS 6) y antena con paquete wifi (RouterOS 7)."""
+    wireless = AntenaSimulada(wireless=[{"signal-strength": "-57@6Mbps"}])
+    wifi = AntenaSimulada(wifi=[{"signal": "-63"}])
+    assert asyncio.run(RouterOSDriver.leer_senal_enlace(wireless)) == -57
+    assert asyncio.run(RouterOSDriver.leer_senal_enlace(wifi)) == -63
+
+
+def test_antena_sin_equipo_asociado():
+    """Si la tabla de registro está vacía, el enlace no está conectado y no hay señal que leer."""
+    with pytest.raises(SenalNoDisponible):
+        asyncio.run(RouterOSDriver.leer_senal_enlace(AntenaSimulada(wireless=[])))

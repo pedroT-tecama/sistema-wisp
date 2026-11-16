@@ -236,3 +236,4 @@ class EvaluacionResultado(BaseModel):
     caidos: list[int]
     restablecidos: list[int]
     cabeceras_sin_respuesta: list[int]
+    enlaces_degradados: list[int] = []      # enlaces troncales con alerta PTP_DEGRADADO nueva

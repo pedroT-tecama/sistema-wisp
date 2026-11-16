@@ -48,4 +48,5 @@ async def evaluar_ahora():
     """Ejecuta una vuelta del monitoreo: lee la tabla de rutas de cada cabecera y actualiza los ruteadores."""
     r = await tareas.monitor.ejecutar_monitoreo_distrital()
     return EvaluacionResultado(vuelta=r.vuelta, caidos=r.caidos, restablecidos=r.restablecidos,
-                               cabeceras_sin_respuesta=r.cabeceras_sin_respuesta)
+                               cabeceras_sin_respuesta=r.cabeceras_sin_respuesta,
+                               enlaces_degradados=r.enlaces_degradados)

@@ -94,9 +94,10 @@ async def ciclo_monitoreo():
     while True:
         try:
             r = await monitor.ejecutar_monitoreo_distrital()
-            if r.caidos or r.restablecidos or r.cabeceras_sin_respuesta:
-                log.info("Monitoreo, vuelta %s: %s caído(s), %s restablecido(s), %s cabecera(s) sin respuesta.",
-                         r.vuelta, len(r.caidos), len(r.restablecidos), len(r.cabeceras_sin_respuesta))
+            if r.caidos or r.restablecidos or r.cabeceras_sin_respuesta or r.enlaces_degradados:
+                log.info("Monitoreo, vuelta %s: %s caído(s), %s restablecido(s), %s cabecera(s) sin respuesta, "
+                         "%s enlace(s) degradado(s).", r.vuelta, len(r.caidos), len(r.restablecidos),
+                         len(r.cabeceras_sin_respuesta), len(r.enlaces_degradados))
         except Exception as error:                  # un error no detiene el monitoreo; se reintenta en la siguiente vuelta
             log.error("Error en el monitoreo: %s", error)
         await asyncio.sleep(MONITOREO_INTERVALO_SEGUNDOS)

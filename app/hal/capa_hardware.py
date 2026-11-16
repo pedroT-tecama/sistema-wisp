@@ -17,7 +17,8 @@ A qué dirección se conecta (MK_MODO_CONEXION en el archivo .env):
 Con qué se relaciona:
     - La usan: el proceso ControladorColaSincronizacion (app/cola_sincronizacion.py),
       único componente que pide cambios en los ruteadores, y el monitoreo
-      (app/monitoreo.py), que solo lee la tabla de rutas OSPF de la cabecera.
+      (app/monitoreo.py), que solo lee la tabla de rutas OSPF de la cabecera y la
+      señal de las antenas de los enlaces troncales.
     - Usa: app/hal/drivers.py y app/hal/cliente_api.py.
     - Lee de: app/models.py (RouterNode y RouterMaster: IP, puertos y versión).
     - Lo prueba: tests/test_hal.py; prueba manual: scripts/prueba_hal.py.
@@ -28,7 +29,7 @@ from dotenv import load_dotenv
 
 from app.hal.cliente_api import MikrotikAPIClient
 from app.hal.drivers import RouterOSDriver, RouterOSv6Driver, RouterOSv7Driver
-from app.models import RouterMaster, RouterNode
+from app.models import EnlaceBackhaulPTP, RouterMaster, RouterNode
 
 load_dotenv()
 MODO_CONEXION = os.getenv("MK_MODO_CONEXION", "directo")
@@ -90,3 +91,18 @@ class HardwareAbstractionLayer:
         en modo cabecera). Lo usa el monitoreo (app/monitoreo.py).
         """
         return await self._ejecutar(cabecera, lambda d: d.leer_rutas_ospf())
+
+    async def consultar_senal_enlace(self, enlace: EnlaceBackhaulPTP) -> int:
+        """Devuelve la señal actual (RSSI, en dBm) del enlace troncal, leída en su antena receptora.
+
+        Se conecta a la IP de gestión de la antena (ip_antena_destino) y al puerto de la API
+        (MK_PORT), como en el modo directo. No usa la fábrica de drivers: la lectura no depende
+        de la versión de RouterOS (ver RouterOSDriver.leer_senal_enlace).
+        Lo usa el monitoreo (app/monitoreo.py, evaluar_senal_enlaces).
+        """
+        cliente = MikrotikAPIClient()
+        try:
+            await cliente.conectar_socket(enlace.ip_antena_destino, PUERTO_API)
+            return await RouterOSDriver.leer_senal_enlace(cliente)
+        finally:
+            await cliente.cerrar_y_purgar_socket()

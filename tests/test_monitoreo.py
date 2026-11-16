@@ -11,6 +11,11 @@ Qué prueba:
     - RouterNode distingue al ruteador conectado a la cabecera del que depende de otro ruteador (cascada).
     - Correo de alerta: uno solo por vuelta (la cascada va en el mismo correo), otro al restablecerse,
       otro si la cabecera no responde, ninguno si no hay cambios; si el correo falla, el monitoreo sigue.
+    - Enlaces troncales: cada vuelta guarda una lectura de señal; 3 lecturas seguidas bajo el umbral
+      registran PTP_DEGRADADO (una sola vez); al recuperarse la señal la alerta se cierra; si la
+      antena no responde no se guarda lectura y el monitoreo sigue.
+    - Si un ruteador cae y la antena del enlace que lo conecta tampoco responde, su alerta indica la
+      probable caída del radioenlace; los ruteadores en cascada no repiten esa frase.
 
 Cómo se prueba sin red:
     CabeceraSimulada reemplaza a HardwareAbstractionLayer y devuelve la tabla de
@@ -31,7 +36,7 @@ import pytest
 from sqlalchemy import select
 
 from app.hal.cliente_api import ErrorConexionRouter
-from app.models import RegistroAlerta, RouterMaster, RouterNode
+from app.models import EnlaceBackhaulPTP, LecturaSenalEnlace, RegistroAlerta, RouterMaster, RouterNode
 from app.monitoreo import MotorTelemetriaProactiva
 
 BANDERAS = {"torre6": "10.250.0.6", "torre3": "10.250.0.3", "torre5": "10.250.0.5", "ap": "10.250.0.14"}
@@ -43,11 +48,18 @@ class CabeceraSimulada:
     def __init__(self):
         self.rutas = []
         self.responde = True
+        self.senal = -60                 # RSSI que "mide" la antena del enlace
+        self.antena_responde = True
 
     async def consultar_rutas_ospf(self, cabecera):
         if not self.responde:
             raise ErrorConexionRouter("la cabecera no responde (simulado)")
         return self.rutas
+
+    async def consultar_senal_enlace(self, enlace):
+        if not self.antena_responde:
+            raise ErrorConexionRouter("la antena no responde (simulado)")
+        return self.senal
 
 
 class CorreoSimulado:
@@ -87,10 +99,21 @@ def distrito(session):
     return {"master": master, "torre6": torre6, "torre3": torre3, "torre5": torre5, "ap": ap}
 
 
+@pytest.fixture
+def enlace(session, distrito):
+    """Enlace troncal de prueba Torre 6 -> Torre 3, con umbral de -68 dBm."""
+    e = EnlaceBackhaulPTP(router_origen_id=distrito["torre6"].id, router_destino_id=distrito["torre3"].id,
+                          nombre_enlace="Enlace Prueba T6-T3", ip_antena_origen="192.0.2.41",
+                          ip_antena_destino="192.0.2.42", rssi_minimo_esperado=-68)
+    session.add(e)
+    session.commit()
+    return e
+
+
 def motor(session, cabecera, correo=None):
     """Motor con la sesión de prueba (sin cerrarla), la cabecera simulada, 2 lecturas y un correo simulado."""
     return MotorTelemetriaProactiva(sesion=lambda: nullcontext(session), hal=cabecera, lecturas=2,
-                                    correo=correo or CorreoSimulado())
+                                    correo=correo or CorreoSimulado(), lecturas_senal=3)
 
 
 def tabla(*nombres):
@@ -259,3 +282,101 @@ def test_correo_fallido_no_detiene_el_monitoreo(session, distrito):
     r = evaluar(m)
     assert r.caidos == [distrito["ap"].id]
     assert len(alertas(session, router_id=distrito["ap"].id)) == 1
+
+
+# ------------------------------------------------------------ enlaces troncales
+def todas(cabecera):
+    """Tabla de rutas con todas las banderas: los ruteadores están bien y solo se evalúa la señal."""
+    cabecera.rutas = tabla("torre6", "torre3", "torre5", "ap")
+
+
+def test_regla_de_senal_degradada(enlace):
+    """Con umbral -68 dBm: -70 está degradada; -68 y -60 no."""
+    assert enlace.senal_degradada(-70)
+    assert not enlace.senal_degradada(-68) and not enlace.senal_degradada(-60)
+
+
+def test_cada_vuelta_guarda_una_lectura(session, distrito, enlace):
+    """Cada vuelta agrega una lectura con la señal medida."""
+    cabecera = CabeceraSimulada()
+    todas(cabecera)
+    m = motor(session, cabecera)
+    evaluar(m)
+    cabecera.senal = -62
+    evaluar(m)
+    lecturas = session.scalars(select(LecturaSenalEnlace.rssi_medido)
+                               .where(LecturaSenalEnlace.enlace_id == enlace.id).order_by(LecturaSenalEnlace.id)).all()
+    assert lecturas == [-60, -62]
+
+
+def test_ptp_degradado_tras_tres_lecturas(session, distrito, enlace):
+    """Señal de -75 dBm: la alerta llega en la tercera lectura, va en el correo y no se repite."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    todas(cabecera)
+    cabecera.senal = -75
+    m = motor(session, cabecera, correo)
+    evaluar(m)
+    evaluar(m)
+    assert alertas(session, enlace_id=enlace.id) == []
+    r = evaluar(m)
+    assert r.enlaces_degradados == [enlace.id]
+    alerta = alertas(session, enlace_id=enlace.id)
+    assert len(alerta) == 1 and alerta[0].prefijo_excepcion == "PTP_DEGRADADO"
+    assert "Enlace Prueba T6-T3" in correo.enviados[-1][1] and "-75 dBm" in correo.enviados[-1][1]
+    evaluar(m)
+    assert len(alertas(session, enlace_id=enlace.id)) == 1
+
+
+def test_una_lectura_buena_reinicia_la_cuenta(session, distrito, enlace):
+    """Dos lecturas bajas, una buena y otra baja: no hay alerta, porque no son tres seguidas."""
+    cabecera = CabeceraSimulada()
+    todas(cabecera)
+    m = motor(session, cabecera)
+    for senal in (-75, -75, -60, -75):
+        cabecera.senal = senal
+        evaluar(m)
+    assert alertas(session, enlace_id=enlace.id) == []
+
+
+def test_senal_recuperada_cierra_la_alerta(session, distrito, enlace):
+    """Cuando la señal vuelve sobre el umbral, la alerta se cierra y llega el correo de restablecimiento."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    todas(cabecera)
+    cabecera.senal = -75
+    m = motor(session, cabecera, correo)
+    for _ in range(3):
+        evaluar(m)
+    cabecera.senal = -60
+    evaluar(m)
+    assert alertas(session, enlace_id=enlace.id)[0].fecha_resolucion is not None
+    asunto, cuerpo = correo.enviados[-1]
+    assert "Restablecido" in asunto and "recuperó su señal" in cuerpo
+
+
+def test_antena_sin_respuesta_no_guarda_lectura(session, distrito, enlace):
+    """Si la antena no responde, no se guarda lectura ni alerta de señal, y el monitoreo OSPF sigue."""
+    cabecera = CabeceraSimulada()
+    cabecera.rutas = tabla("torre6", "torre3", "torre5")            # además cae el AP
+    cabecera.antena_responde = False
+    m = motor(session, cabecera)
+    evaluar(m)
+    r = evaluar(m)
+    assert r.caidos == [distrito["ap"].id]
+    assert session.scalars(select(LecturaSenalEnlace).where(LecturaSenalEnlace.enlace_id == enlace.id)).all() == []
+    assert alertas(session, enlace_id=enlace.id) == []
+    assert "radioenlace" not in alertas(session, router_id=distrito["ap"].id)[0].descripcion_error
+
+
+def test_caida_del_radioenlace(session, distrito, enlace):
+    """Cae el enlace T6-T3: su antena no responde y caen Torre 3 y Torre 5; solo Torre 3 nombra el radioenlace."""
+    cabecera, correo = CabeceraSimulada(), CorreoSimulado()
+    cabecera.rutas = tabla("torre6", "ap")                          # sin Torre 3 ni Torre 5
+    cabecera.antena_responde = False
+    m = motor(session, cabecera, correo)
+    evaluar(m)
+    evaluar(m)
+    texto_t3 = alertas(session, router_id=distrito["torre3"].id)[0].descripcion_error
+    texto_t5 = alertas(session, router_id=distrito["torre5"].id)[0].descripcion_error
+    assert "Probable caída del radioenlace Enlace Prueba T6-T3" in texto_t3
+    assert "radioenlace" not in texto_t5 and "cascada" in texto_t5
+    assert len(correo.enviados) == 1 and "Probable caída del radioenlace" in correo.enviados[0][1]

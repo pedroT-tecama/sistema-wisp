@@ -6,7 +6,8 @@ Qué hace:
     aplicarle el corte (límite 1k/1k) y restablecerle las velocidades de su
     plan. Declara como abstracto leer_rutas_ospf(), porque la tabla de rutas
     OSPF está organizada de forma distinta en cada versión; cada subclase lo
-    implementa a su manera.
+    implementa a su manera. También lee la señal de un radioenlace punto a
+    punto (leer_senal_enlace), que se toma de la tabla de registro inalámbrica.
 
     Las colas simples se crean a mano en el ruteador al instalar al abonado
     (aprovisionamiento manual); el sistema solo cambia su límite (max-limit).
@@ -17,9 +18,10 @@ Con qué se relaciona:
     - Usa: app/hal/cliente_api.py (MikrotikAPIClient) para hablar con el ruteador.
     - Lo prueba: tests/test_hal.py.
 """
+import re
 from abc import ABC, abstractmethod
 
-from app.hal.cliente_api import MikrotikAPIClient
+from app.hal.cliente_api import ErrorComandoRouter, MikrotikAPIClient
 
 LIMITE_CORTE = "1k/1k"          # límite que deja al abonado sin servicio útil (HU-03)
 MULTIPLICADORES = {"k": 1_000, "M": 1_000_000, "G": 1_000_000_000}
@@ -27,6 +29,16 @@ MULTIPLICADORES = {"k": 1_000, "M": 1_000_000, "G": 1_000_000_000}
 
 class ColaNoEncontrada(Exception):
     """El ruteador no tiene una cola simple para la IP del abonado."""
+
+
+class SenalNoDisponible(Exception):
+    """La antena no tiene tabla de registro inalámbrica o no tiene ningún equipo asociado."""
+
+
+def a_dbm(valor) -> int | None:
+    """Toma el número de una señal de RouterOS: "-58@HT20-7" -> -58, "-61" -> -61. Sin número: None."""
+    encontrado = re.match(r"\s*(-?\d+)", str(valor or ""))
+    return int(encontrado.group(1)) if encontrado else None
 
 
 def a_bits_por_segundo(valor: str) -> int:
@@ -82,6 +94,30 @@ class RouterOSDriver(ABC):
     async def inyectar_politica_reactivacion(self, ip: str, rate_upload: str, rate_download: str) -> bool:
         """Reactivación (HU-03): restablece en la cola las velocidades del plan. Devuelve False si ya las tenía."""
         return await self._fijar_limite(ip, f"{rate_upload}/{rate_download}")
+
+    @staticmethod
+    async def leer_senal_enlace(api_client: MikrotikAPIClient) -> int:
+        """Devuelve la señal recibida (RSSI, en dBm) del radioenlace punto a punto de una antena.
+
+        No depende de la versión de RouterOS sino del paquete inalámbrico de la antena, por eso
+        no se elige un driver: es un método de la clase base que recibe la conexión ya abierta.
+        Lee la tabla de registro del paquete wireless (RouterOS 6 y antenas como QRT5ac, SXTsq 5ac
+        o SEXTANT G) y, si la antena no la tiene, la del paquete wifi de RouterOS 7. En un enlace
+        punto a punto hay un solo equipo asociado.
+        Lo llama HardwareAbstractionLayer.consultar_senal_enlace.
+        """
+        for comando, campo in (("/interface/wireless/registration-table/print", "signal-strength"),
+                               ("/interface/wifi/registration-table/print", "signal")):
+            try:
+                registrados = await api_client.enviar_trama_binaria(comando)
+            except ErrorComandoRouter:
+                continue                                   # la antena no tiene ese paquete: se prueba el otro
+            for equipo in registrados:
+                rssi = a_dbm(equipo.get(campo))
+                if rssi is not None:
+                    return rssi
+            raise SenalNoDisponible("La antena no tiene ningún equipo asociado: el enlace no está conectado.")
+        raise SenalNoDisponible("La antena no tiene tabla de registro inalámbrica.")
 
     @abstractmethod
     async def leer_rutas_ospf(self) -> list[str]:
