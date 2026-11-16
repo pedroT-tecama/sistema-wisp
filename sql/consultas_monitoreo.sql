@@ -126,3 +126,66 @@ FROM (
 ) t
 ORDER BY t.hora DESC
 LIMIT 50;
+
+-- ============================================================================
+-- Consultas generales de la red y la operación
+-- ============================================================================
+
+-- 11. Distritos (cabeceras) registrados.
+SELECT  id, nombre_distrito AS distrito, ddns_url AS acceso, puerto_base, version_routeros AS version
+FROM    router_master
+ORDER BY id;
+
+-- 12. Ruteadores con todos sus datos: distrito, tipo, versión, IP, bandera, superior y estado.
+SELECT  r.id, m.nombre_distrito AS distrito, r.nombre_equipo AS ruteador, r.tipo_nodo AS tipo,
+        r.version_routeros AS version, r.ip_router AS ip_gestion, r.ip_gestion_ospf AS bandera_ospf,
+        r.puerto_socket AS puerto, COALESCE(p.nombre_equipo, '(cabecera, raíz)') AS ruteador_superior,
+        r.estado_operativo AS estado
+FROM    router_node r
+JOIN    router_master m ON m.id = r.master_id
+LEFT JOIN router_node p ON p.id = r.padre_id
+ORDER BY r.master_id, r.id;
+
+-- 13. Árbol de la red: cada ruteador con su cadena de superiores hasta la cabecera.
+WITH RECURSIVE arbol AS (
+    SELECT  id, nombre_equipo, padre_id, 0 AS nivel, CAST(nombre_equipo AS CHAR(500)) AS ruta
+    FROM    router_node WHERE padre_id IS NULL
+    UNION ALL
+    SELECT  r.id, r.nombre_equipo, r.padre_id, a.nivel + 1, CONCAT(a.ruta, ' > ', r.nombre_equipo)
+    FROM    router_node r JOIN arbol a ON r.padre_id = a.id
+)
+SELECT  id, nivel, ruta FROM arbol ORDER BY ruta;
+
+-- 14. Abonados por ruteador y por estado (cuántos clientes depende de cada equipo).
+SELECT  r.id, r.nombre_equipo AS ruteador,
+        COUNT(c.id) AS abonados,
+        SUM(c.estado = 'ACTIVO') AS activos,
+        SUM(c.estado = 'PENDIENTE_SUSPENSION') AS por_suspender,
+        SUM(c.estado = 'SUSPENDIDO') AS suspendidos
+FROM    router_node r
+LEFT JOIN cliente c ON c.router_id = r.id
+GROUP BY r.id, r.nombre_equipo
+ORDER BY r.id;
+
+-- 15. Cola de órdenes: las pendientes y las últimas aplicadas, con su ruteador.
+SELECT  t.id, t.accion, t.estado, t.intentos, r.nombre_equipo AS ruteador,
+        JSON_UNQUOTE(JSON_EXTRACT(t.payload_parametros_red, '$.ip_cliente')) AS ip_abonado,
+        DATE_FORMAT(t.fecha_creacion, '%d/%m %H:%i:%s') AS creada
+FROM    tarea_pendiente_red t
+JOIN    router_node r ON r.id = t.router_id
+ORDER BY (t.estado = 'PENDIENTE') DESC, t.id DESC
+LIMIT 30;
+
+-- 16. Incidentes del día, una fila por alerta con la descripción completa (evidencia).
+--     Para desde una hora exacta, cambiar CURDATE() por '2026-11-16 04:50'.
+SELECT  a.id_alerta AS id, a.prefijo_excepcion AS tipo,
+        COALESCE(e.nombre_enlace, r.nombre_equipo, m.nombre_distrito) AS origen,
+        DATE_FORMAT(a.fecha_registro, '%d/%m %H:%i:%s') AS registro,
+        COALESCE(DATE_FORMAT(a.fecha_resolucion, '%d/%m %H:%i:%s'), 'ABIERTA') AS resolucion,
+        a.descripcion_error AS descripcion
+FROM    registro_alerta a
+LEFT JOIN enlace_backhaul_ptp e ON e.id = a.enlace_id
+LEFT JOIN router_node r         ON r.id = a.router_id
+LEFT JOIN router_master m       ON m.id = a.master_id
+WHERE   a.fecha_registro >= CURDATE()
+ORDER BY a.id_alerta DESC;
