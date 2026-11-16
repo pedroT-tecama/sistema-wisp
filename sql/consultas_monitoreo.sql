@@ -75,3 +75,54 @@ FROM    lectura_senal_enlace
 WHERE   enlace_id = 1
 ORDER BY id DESC
 LIMIT 10;
+
+-- 8. Enlaces troncales registrados, con los ruteadores que unen y sus antenas.
+SELECT  e.id, e.nombre_enlace AS enlace,
+        o.nombre_equipo AS ruteador_origen, d.nombre_equipo AS ruteador_destino,
+        e.ip_antena_origen AS antena_emisora, e.ip_antena_destino AS antena_receptora,
+        e.rssi_minimo_esperado AS umbral_dbm
+FROM    enlace_backhaul_ptp e
+JOIN    router_node o ON o.id = e.router_origen_id
+JOIN    router_node d ON d.id = e.router_destino_id
+ORDER BY e.id;
+
+-- 9. Alertas de los enlaces: señal degradada (PTP_DEGRADADO) y caídas con probable caída del radioenlace.
+SELECT  a.id_alerta AS id, a.prefijo_excepcion AS tipo,
+        COALESCE(e.nombre_enlace, r.nombre_equipo) AS origen,
+        DATE_FORMAT(a.fecha_registro, '%d/%m %H:%i:%s') AS registro,
+        COALESCE(DATE_FORMAT(a.fecha_resolucion, '%d/%m %H:%i:%s'), 'ABIERTA') AS resolucion,
+        a.descripcion_error AS descripcion
+FROM    registro_alerta a
+LEFT JOIN enlace_backhaul_ptp e ON e.id = a.enlace_id
+LEFT JOIN router_node r ON r.id = a.router_id
+WHERE   a.prefijo_excepcion = 'PTP_DEGRADADO'
+   OR   a.descripcion_error LIKE '%radioenlace%'
+ORDER BY a.id_alerta DESC;
+
+-- 10. Registro del monitoreo en orden de tiempo (como un log): alertas que se abren,
+--     alertas que se cierran y lecturas de señal. Muestra los últimos 50 eventos.
+SELECT  DATE_FORMAT(t.hora, '%d/%m %H:%i:%s') AS hora, t.evento, t.origen, t.detalle
+FROM (
+    SELECT  a.fecha_registro AS hora, CONCAT('ALERTA ', a.prefijo_excepcion) AS evento,
+            COALESCE(r.nombre_equipo, e.nombre_enlace, CONCAT('Cabecera, distrito ', a.master_id)) AS origen,
+            LEFT(a.descripcion_error, 120) AS detalle
+    FROM    registro_alerta a
+    LEFT JOIN router_node r ON r.id = a.router_id
+    LEFT JOIN enlace_backhaul_ptp e ON e.id = a.enlace_id
+    UNION ALL
+    SELECT  a.fecha_resolucion, CONCAT('CIERRE ', a.prefijo_excepcion),
+            COALESCE(r.nombre_equipo, e.nombre_enlace, CONCAT('Cabecera, distrito ', a.master_id)),
+            CONCAT('Resuelta tras ', TIMEDIFF(a.fecha_resolucion, a.fecha_registro))
+    FROM    registro_alerta a
+    LEFT JOIN router_node r ON r.id = a.router_id
+    LEFT JOIN enlace_backhaul_ptp e ON e.id = a.enlace_id
+    WHERE   a.fecha_resolucion IS NOT NULL
+    UNION ALL
+    SELECT  l.fecha_hora, 'LECTURA DE SEÑAL', e.nombre_enlace,
+            CONCAT(l.rssi_medido, ' dBm (umbral ', e.rssi_minimo_esperado, ' dBm)',
+                   IF(l.rssi_medido < e.rssi_minimo_esperado, ' BAJO EL UMBRAL', ''))
+    FROM    lectura_senal_enlace l
+    JOIN    enlace_backhaul_ptp e ON e.id = l.enlace_id
+) t
+ORDER BY t.hora DESC
+LIMIT 50;
