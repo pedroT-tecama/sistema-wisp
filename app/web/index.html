@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<!--
+  Interfaz web de operación del Sistema WISP.
+  Qué es: una capa visual sobre la API que ya existe (la misma que se usa en /docs).
+  No contiene reglas de negocio: cada botón llama a una ruta de la API y muestra su respuesta.
+  Lo sirve: app/main.py (app.mount en /panel).  Lógica de la página: panel.js.  Diseño: estilos.css.
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema WISP · Panel de operación</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header>
+    <h1>Sistema WISP <span>Panel de operación</span></h1>
+    <nav id="pestanas">
+      <button data-p="abonados" class="activa">Abonados</button>
+      <button data-p="nuevo">Nuevo abonado</button>
+      <button data-p="ordenes">Órdenes</button>
+      <button data-p="monitoreo">Monitoreo</button>
+      <button data-p="enlaces">Enlaces</button>
+      <button data-p="red">Red</button>
+    </nav>
+  </header>
+
+  <div id="aviso" class="aviso oculto"></div>
+
+  <main>
+    <!-- Pestaña 1: búsqueda, ficha, pago y suspensión (HU-02, HU-03) -->
+    <section id="p-abonados" class="pestana">
+      <form id="f-buscar" class="fila">
+        <input id="buscar" placeholder="DNI o apellidos" required maxlength="40">
+        <button>Buscar</button>
+      </form>
+      <table id="t-abonados" class="tabla"></table>
+      <div id="ficha" class="tarjeta oculto"></div>
+    </section>
+
+    <!-- Pestaña 2: registro del abonado tras la instalación (HU-01) -->
+    <section id="p-nuevo" class="pestana oculto">
+      <form id="f-nuevo" class="formulario">
+        <label>Nombres <input name="nombres" required maxlength="40"></label>
+        <label>Apellidos <input name="apellidos" required maxlength="40"></label>
+        <label>DNI <input name="dni" required minlength="8" maxlength="12"></label>
+        <label>Dirección <input name="direccion" required maxlength="150"></label>
+        <label>IP del abonado <input name="ip_cliente" required placeholder="192.168.103.101"></label>
+        <label>MAC (opcional) <input name="mac_cliente" placeholder="AA:BB:CC:11:22:33"></label>
+        <label>Ruteador de borde <select name="router_id" id="sel-router" required></select></label>
+        <label>Plan de servicio <select name="tarifa_id" id="sel-plan" required></select></label>
+        <label>Fecha de registro (opcional) <input name="fecha_registro" type="date"></label>
+        <button>Registrar abonado</button>
+      </form>
+      <div id="r-nuevo" class="tarjeta oculto"></div>
+    </section>
+
+    <!-- Pestaña 3: cola de órdenes pendientes hacia los ruteadores -->
+    <section id="p-ordenes" class="pestana oculto">
+      <div class="fila">
+        <select id="f-estado">
+          <option value="">Todas</option>
+          <option>PENDIENTE</option><option>PROCESADO</option><option>ANULADO</option>
+        </select>
+        <button id="b-ordenes">Actualizar</button>
+        <button id="b-despachar" class="secundario">Aplicar ahora las pendientes</button>
+      </div>
+      <table id="t-ordenes" class="tabla"></table>
+    </section>
+
+    <!-- Pestaña 4: estado de los ruteadores y alertas (HU-04, HU-05) -->
+    <section id="p-monitoreo" class="pestana oculto">
+      <div class="fila">
+        <button id="b-monitoreo">Actualizar</button>
+        <button id="b-evaluar" class="secundario">Evaluar ahora la conectividad</button>
+        <label class="check"><input type="checkbox" id="solo-abiertas" checked> Solo alertas abiertas</label>
+      </div>
+      <h2>Ruteadores</h2>
+      <div id="ruteadores" class="rejilla"></div>
+      <h2>Alertas</h2>
+      <table id="t-alertas" class="tabla"></table>
+    </section>
+
+    <!-- Pestaña 5: gráfica de la señal de los enlaces troncales (HU-05) -->
+    <section id="p-enlaces" class="pestana oculto">
+      <div class="fila">
+        <select id="sel-enlace"></select>
+        <select id="sel-ventana">
+          <option value="u10">Tiempo real · últimas 10 lecturas</option>
+          <option value="u20" selected>Tiempo real · últimas 20 lecturas</option>
+          <option value="u60">Tiempo real · últimas 60 lecturas</option>
+          <option value="h6">Historial · últimas 6 horas</option>
+          <option value="h24">Historial · últimas 24 horas</option>
+        </select>
+        <span id="estado-grafica" class="tenue"></span>
+      </div>
+      <div id="grafica" class="tarjeta"></div>
+    </section>
+    <!-- Pestaña 6: mapa de la red con el estado de ruteadores y enlaces (HU-04, HU-05) -->
+    <section id="p-red" class="pestana oculto">
+      <div class="fila">
+        <button id="b-red">Actualizar</button>
+        <span class="leyenda"><i class="l-ok"></i>En servicio <i class="l-amb"></i>Degradado o sin respuesta
+          <i class="l-mal"></i>Caído <i class="l-cable"></i>Cable o segmento <i class="l-radio"></i>Enlace inalámbrico</span>
+        <span id="estado-red" class="tenue"></span>
+      </div>
+      <div id="mapa" class="tarjeta"></div>
+    </section>
+  </main>
+
+  <!-- Avisos de avería y de restablecimiento (aparecen en cualquier pestaña) -->
+  <div id="notificaciones"></div>
+
+  <footer>Capa visual sobre la API del sistema · la documentación técnica sigue disponible en <a href="/docs">/docs</a></footer>
+  <script src="panel.js"></script>
+</body>
+</html>

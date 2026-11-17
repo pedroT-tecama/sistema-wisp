@@ -14,6 +14,9 @@ Con qué se relaciona:
     - app/routers/suspensiones.py : ruta de suspensión manual del abonado.
     - app/routers/ordenes.py  : consulta de la cola de órdenes y despacho manual.
     - app/routers/monitoreo.py: estado de los ruteadores, alertas y evaluación manual del monitoreo.
+    - app/routers/enlaces.py  : enlaces troncales y sus lecturas de señal (para la gráfica del panel).
+    - app/routers/consultas.py: planes de servicio y mapa de la red (para el panel).
+    - app/web/                : interfaz web de operación (/panel), capa visual sobre estas mismas rutas.
     - app/tareas.py           : suspensión diaria, cola de órdenes y monitoreo, que arrancan al encender el sistema.
     - app/database.py         : conexión con MySQL, usada por /salud/db.
     - Archivo .env            : credenciales de los ruteadores (MK_USER, MK_PASS, MK_PORT).
@@ -21,15 +24,17 @@ Con qué se relaciona:
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from librouteros import connect
 from sqlalchemy import text
 
 from app.database import engine
 from app import tareas
-from app.routers import abonados, monitoreo, ordenes, pagos, suspensiones
+from app.routers import abonados, consultas, enlaces, monitoreo, ordenes, pagos, suspensiones
 
 load_dotenv()                          # carga las variables del archivo .env
 
@@ -55,6 +60,9 @@ app.include_router(pagos.router)       # agrega la ruta /abonados/{id}/pagos (HU
 app.include_router(suspensiones.router)  # agrega la ruta /abonados/{id}/suspension (HU-03)
 app.include_router(ordenes.router)     # agrega las rutas /ordenes (cola de órdenes)
 app.include_router(monitoreo.router)   # agrega las rutas /monitoreo (HU-04, HU-05)
+app.include_router(enlaces.router)     # agrega las rutas /enlaces (lecturas de señal para el panel)
+app.include_router(consultas.router)   # agrega las rutas /consultas (planes y mapa de la red para el panel)
+app.mount("/panel", StaticFiles(directory=Path(__file__).parent / "web", html=True), name="panel")  # interfaz web
 
 
 @app.get("/")

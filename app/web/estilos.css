@@ -1,0 +1,62 @@
+/* Diseño del panel de operación (app/web/index.html). Sobrio y legible; sin bibliotecas externas. */
+:root { --azul:#1b365d; --azul2:#2f5d8c; --gris:#f3f5f8; --borde:#d9dee6; --texto:#1f2933; --tenue:#6b7785;
+        --ok:#1e7b46; --okf:#e6f4ec; --mal:#b42318; --malf:#fdecea; --ambar:#a15c00; --ambarf:#fff4e0; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: "Segoe UI", Arial, sans-serif; color:var(--texto); background:var(--gris); font-size:14px; }
+header { background:var(--azul); color:#fff; padding:14px 24px 0; }
+header h1 { margin:0 0 10px; font-size:20px; font-weight:600; }
+header h1 span { font-weight:400; opacity:.75; font-size:15px; margin-left:8px; }
+nav button { background:none; border:none; color:#cfd9e6; padding:10px 16px; font-size:14px; cursor:pointer; border-bottom:3px solid transparent; }
+nav button.activa { color:#fff; border-bottom-color:#fff; font-weight:600; }
+main { padding:20px 24px; max-width:1200px; margin:0 auto; }
+h2 { font-size:15px; margin:22px 0 10px; color:var(--azul); }
+.oculto { display:none !important; }
+.fila { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+input, select { padding:8px 10px; border:1px solid var(--borde); border-radius:6px; font-size:14px; background:#fff; }
+#buscar { width:280px; }
+button { padding:8px 14px; border:none; border-radius:6px; background:var(--azul2); color:#fff; cursor:pointer; font-size:14px; }
+button:hover { filter:brightness(1.1); }
+button.secundario { background:#fff; color:var(--azul2); border:1px solid var(--azul2); }
+button.peligro { background:var(--mal); }
+.tabla { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--borde); }
+.tabla th { background:var(--azul); color:#fff; text-align:left; padding:8px 10px; font-weight:600; font-size:13px; }
+.tabla td { padding:7px 10px; border-top:1px solid var(--borde); }
+.tabla tr.clic:hover td { background:#eef3fa; cursor:pointer; }
+.tarjeta { background:#fff; border:1px solid var(--borde); border-radius:8px; padding:16px 18px; margin-top:14px; }
+.tarjeta h3 { margin:0 0 10px; color:var(--azul); }
+.datos { display:grid; grid-template-columns: 180px 1fr 180px 1fr; gap:6px 14px; }
+.datos b { color:var(--tenue); font-weight:500; }
+.formulario { display:grid; grid-template-columns: 1fr 1fr; gap:12px 18px; background:#fff; padding:18px; border:1px solid var(--borde); border-radius:8px; }
+.formulario label { display:flex; flex-direction:column; gap:4px; color:var(--tenue); font-size:13px; }
+.formulario button { grid-column: span 2; justify-self:start; }
+.estado { padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600; }
+.e-ok { background:var(--okf); color:var(--ok); } .e-mal { background:var(--malf); color:var(--mal); } .e-amb { background:var(--ambarf); color:var(--ambar); }
+.rejilla { display:grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap:12px; }
+.nodo { background:#fff; border:1px solid var(--borde); border-left:5px solid var(--ok); border-radius:8px; padding:10px 12px; }
+.nodo.caido { border-left-color:var(--mal); background:var(--malf); }
+.nodo .nom { font-weight:600; } .nodo .det { color:var(--tenue); font-size:12px; margin-top:3px; }
+.aviso { margin:12px 24px 0; padding:10px 14px; border-radius:6px; }
+.aviso.ok { background:var(--okf); color:var(--ok); border:1px solid #b7e0c6; }
+.aviso.error { background:var(--malf); color:var(--mal); border:1px solid #f3c1bc; }
+.tenue { color:var(--tenue); font-size:13px; }
+.check { color:var(--tenue); display:flex; gap:6px; align-items:center; }
+.acciones { margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+.acciones input { width:130px; }
+#grafica svg { width:100%; height:auto; display:block; }
+.desliza { transition: transform .8s ease-out; }
+footer { text-align:center; color:var(--tenue); font-size:12px; padding:20px; }
+footer a { color:var(--azul2); }
+
+/* Mapa de la red (pestaña Red) */
+#mapa svg { width:100%; height:auto; display:block; }
+.leyenda { color:var(--tenue); font-size:12px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.leyenda i { display:inline-block; width:22px; height:0; border-top:4px solid; margin-left:10px; vertical-align:middle; }
+.l-ok { border-color:var(--ok) !important; } .l-amb { border-color:#d98a00 !important; } .l-mal { border-color:var(--mal) !important; }
+.l-cable { border-color:#7a8796 !important; } .l-radio { border-top:3px dashed #7a8796 !important; }
+/* Avisos flotantes de avería y restablecimiento */
+#notificaciones { position:fixed; right:20px; bottom:20px; display:flex; flex-direction:column; gap:10px; z-index:10; max-width:420px; }
+.notif { background:#fff; border-left:6px solid var(--mal); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.18); padding:12px 14px; font-size:13px; animation: entra .4s ease-out; }
+.notif.ok { border-left-color:var(--ok); }
+.notif b { display:block; margin-bottom:3px; } .notif .correo { color:var(--tenue); margin-top:5px; }
+.notif .cerrar { float:right; cursor:pointer; color:var(--tenue); margin-left:8px; }
+@keyframes entra { from { transform:translateY(20px); opacity:0; } to { transform:none; opacity:1; } }
