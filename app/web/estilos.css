@@ -60,3 +60,9 @@ footer a { color:var(--azul2); }
 .notif b { display:block; margin-bottom:3px; } .notif .correo { color:var(--tenue); margin-top:5px; }
 .notif .cerrar { float:right; cursor:pointer; color:var(--tenue); margin-left:8px; }
 @keyframes entra { from { transform:translateY(20px); opacity:0; } to { transform:none; opacity:1; } }
+
+/* Gráfica de señal: tramo sin lecturas y mensaje de enlace caído */
+.sin-lectura { fill:#fdecea; }
+.estado.e-act { background:var(--okf); color:var(--ok); } .estado.e-sus { background:var(--malf); color:var(--mal); }
+.nota { margin-top:12px; padding:9px 12px; background:#eef3fa; border-radius:6px; color:var(--azul); font-size:13px; }
+a.enlace { color:var(--azul2); cursor:pointer; text-decoration:underline; }

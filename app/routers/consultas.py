@@ -2,6 +2,7 @@
 
 Qué hace:
     Entrega a la interfaz web (app/web) datos que ya están en la base, armados para mostrarse:
+        GET /consultas/abonados   -> todos los abonados, para la lista completa del panel
         GET /consultas/planes     -> planes de servicio, para elegir el plan en el alta del abonado
         GET /consultas/topologia  -> ruteadores, conexiones y enlaces con su estado, para dibujar la red
     No se conecta a los equipos ni modifica nada: el estado de cada ruteador y de cada enlace
@@ -9,8 +10,8 @@ Qué hace:
 
 Con qué se relaciona:
     - Lo incluye: app/main.py (app.include_router).
-    - Lo llama: app/web/panel.js (pestañas Nuevo abonado y Red, y el aviso de averías).
-    - Usa: app/database.py (get_session), app/models.py (RouterNode, EnlaceBackhaulPTP,
+    - Lo llama: app/web/panel.js (pestañas Abonados, Nuevo abonado y Red, y el aviso de averías).
+    - Usa: app/database.py (get_session), app/schemas.py (AbonadoResumen), app/models.py (RouterNode, EnlaceBackhaulPTP,
       LecturaSenalEnlace, RegistroAlerta, Cliente, PerfilTarifa) y app/notificador.py
       (NotificadorCorreo, solo para saber si el envío de correos está activado).
 """
@@ -22,11 +23,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_session
 from app.models import Cliente, EnlaceBackhaulPTP, LecturaSenalEnlace, PerfilTarifa, RegistroAlerta, RouterNode
 from app.notificador import NotificadorCorreo
+from app.schemas import AbonadoResumen
 
 # Las rutas se agrupan como "Consultas del panel" en /docs.
 router = APIRouter(prefix="/consultas", tags=["Consultas del panel"])
@@ -80,6 +82,13 @@ class Topologia(BaseModel):
     enlaces: list[Enlace]
     correo_activo: bool
     generado: datetime
+
+
+@router.get("/abonados", response_model=list[AbonadoResumen], summary="Lista completa de abonados")
+def listar_abonados(session: Session = Depends(get_session)):
+    """Devuelve todos los abonados con su ruteador, ordenados por apellidos (los filtros los aplica la página)."""
+    consulta = select(Cliente).options(joinedload(Cliente.router)).order_by(Cliente.apellidos, Cliente.nombres, Cliente.id)
+    return session.scalars(consulta).unique().all()
 
 
 @router.get("/planes", response_model=list[Plan], summary="Planes de servicio")

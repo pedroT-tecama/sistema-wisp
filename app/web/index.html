@@ -33,7 +33,14 @@
       <form id="f-buscar" class="fila">
         <input id="buscar" placeholder="DNI o apellidos" required maxlength="40">
         <button>Buscar</button>
+        <button type="button" id="b-todos" class="secundario">Ver todos los abonados</button>
       </form>
+      <div id="filtros-todos" class="fila oculto">
+        <input id="filtro-texto" placeholder="Filtrar por nombre, apellidos o DNI" maxlength="40">
+        <select id="filtro-estado"><option value="">Todos los estados</option><option>ACTIVO</option><option>PENDIENTE_SUSPENSION</option><option>SUSPENDIDO</option></select>
+        <select id="filtro-router"><option value="">Todos los ruteadores</option></select>
+        <span id="conteo" class="tenue"></span>
+      </div>
       <table id="t-abonados" class="tabla"></table>
       <div id="ficha" class="tarjeta oculto"></div>
     </section>
@@ -62,8 +69,10 @@
           <option value="">Todas</option>
           <option>PENDIENTE</option><option>PROCESADO</option><option>ANULADO</option>
         </select>
-        <button id="b-ordenes">Actualizar</button>
-        <button id="b-despachar" class="secundario">Aplicar ahora las pendientes</button>
+        <button id="b-ordenes" class="secundario">Actualizar</button>
+        <button id="b-despachar" title="Ejecuta una vuelta de la cola de órdenes sin esperar al temporizador">▶ Aplicar ahora las pendientes</button>
+        <button id="b-ir-suspender" class="secundario">Suspender un abonado manualmente →</button>
+        <span id="hora-ordenes" class="tenue"></span>
       </div>
       <table id="t-ordenes" class="tabla"></table>
     </section>
@@ -71,9 +80,9 @@
     <!-- Pestaña 4: estado de los ruteadores y alertas (HU-04, HU-05) -->
     <section id="p-monitoreo" class="pestana oculto">
       <div class="fila">
-        <button id="b-monitoreo">Actualizar</button>
-        <button id="b-evaluar" class="secundario">Evaluar ahora la conectividad</button>
-        <label class="check"><input type="checkbox" id="solo-abiertas" checked> Solo alertas abiertas</label>
+        <button id="b-evaluar" title="Ejecuta una vuelta del monitoreo ahora: lee las rutas OSPF de la cabecera y la señal de las antenas, sin esperar al temporizador">▶ Ejecutar una vuelta de monitoreo ahora</button>
+        <label class="check"><input type="checkbox" id="solo-abiertas" checked> Mostrar solo alertas abiertas (desmarcar para ver el historial)</label>
+        <span id="hora-monitoreo" class="tenue"></span>
       </div>
       <h2>Ruteadores</h2>
       <div id="ruteadores" class="rejilla"></div>
@@ -92,6 +101,8 @@
           <option value="h6">Historial · últimas 6 horas</option>
           <option value="h24">Historial · últimas 24 horas</option>
         </select>
+        <label class="check">Refrescar cada
+          <select id="sel-refresco"><option value="5">5 s</option><option value="10" selected>10 s</option><option value="20">20 s</option><option value="30">30 s</option></select></label>
         <span id="estado-grafica" class="tenue"></span>
       </div>
       <div id="grafica" class="tarjeta"></div>
@@ -99,7 +110,6 @@
     <!-- Pestaña 6: mapa de la red con el estado de ruteadores y enlaces (HU-04, HU-05) -->
     <section id="p-red" class="pestana oculto">
       <div class="fila">
-        <button id="b-red">Actualizar</button>
         <span class="leyenda"><i class="l-ok"></i>En servicio <i class="l-amb"></i>Degradado o sin respuesta
           <i class="l-mal"></i>Caído <i class="l-cable"></i>Cable o segmento <i class="l-radio"></i>Enlace inalámbrico</span>
         <span id="estado-red" class="tenue"></span>
